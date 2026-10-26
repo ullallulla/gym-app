@@ -22,33 +22,52 @@ Last checkpoint: 2026-10-26.
 - Separated `App` into `apps/web/src/App.tsx`; `main.tsx` mounts it into the HTML `#app` element.
 - Removed unused starter assets from `src`. `public/favicon.svg` remains referenced by `index.html`.
 
-Runtime success above was reported by the user. The code was inspected at this checkpoint; no builds or automated tests were run during the checkpoint.
+Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
 ## Current exercise: connect React to Go
 
-Status: unfinished. The user stopped for the night before implementing the API button.
+Status: implementation reviewed and production build passing. Formatting and manual failure/recovery checks remain. The user reported that the request works after switching to the relative URL `/api/health`.
 
 Current code state:
 
-- `App.tsx` renders only the `Gym app` heading.
-- `main.tsx` still has an unused `useState` import. Move that import into `App.tsx` when adding state.
-- The development proxy is configured, but an end-to-end frontend request has not yet been confirmed.
+- `App.tsx` owns `apiStatus` state, initially `"Not checked"`, and renders the button and status paragraph. The unused import was removed from `main.tsx`.
+- `checkApi` is inside `App`, fetches `/api/health`, checks `response.ok`, parses the JSON, and stores `result.status`.
+- The relative URL uses the configured development proxy. The earlier absolute URL bypassed the proxy and triggered a browser CORS error.
+- The handler sets `"Checking..."` before fetching. Its catch block narrows `error` with `instanceof Error`, supplies an unknown-error fallback, and displays the error through state.
+
+Initial review and verification (2026-10-26):
+
+- Inspected the current component, entry point, proxy, API handler, scripts, and TypeScript configuration.
+- User-reported runtime result: the request now works. Failure and recovery behavior have not been confirmed.
+- Ran `pnpm --filter web exec vp run build`: failed with `TS18046` at `App.tsx:17` because `error` is `unknown`.
+- Ran `pnpm --filter web exec vp check`: failed on formatting in `package.json`, `src/App.tsx`, `src/main.tsx`, and `vite.config.ts`. This did not establish a passing lint result.
+- Ran `pnpm --filter web exec vp test`: exited with code 1 because no test files exist.
+- Initially only the local Vite+ CLI was accessible through `pnpm --filter web exec vp`; its `vp env doctor` command required the global CLI.
+- Tooling follow-up: the user installed global Vite+. Sourcing `~/.config/vite-plus/env` makes it available in the agent's existing Bash environment. Verified `vp v1.4.0` and ran global `vp env doctor`: all checks passed, using managed Node.js v24.22.1 and pnpm v12.3.4.
+- The required Vite+ install hit restricted registry access and left the local executable unavailable. Restored dependencies successfully with approved `pnpm install --frozen-lockfile`; no manifest or lockfile changes were needed.
+- Application code was reviewed without edits.
+
+Follow-up review (2026-10-26):
+
+- Inspected the user's updated `App.tsx`: loading state, error narrowing, and visible errors are now implemented correctly for this exercise. Explained ternary expressions, `instanceof Error`, and the `unknown` catch variable.
+- Ran `vp run build` from `apps/web`: TypeScript and the production build both passed.
+- Ran `vp check src/App.tsx`: formatting still needs correction.
+- Ran `vp check --no-fmt src/App.tsx`: passed with no warnings or lint errors.
+- Did not repeat the test runner: no test files were added since its previous no-tests result. Browser failure and recovery behavior remain unverified.
+- Application code was reviewed without edits.
 
 Resume with these steps:
 
-1. Import `useState` in `App.tsx` and remove the unused import from `main.tsx`.
-2. Add `apiStatus` state, initially `"Not checked"`.
-3. Write an asynchronous `checkApi` handler that sets `"Checking..."`, calls `fetch("/api/health")`, checks `response.ok`, reads the JSON, and displays its `status` value.
-4. Handle failures with `try/catch` and display a useful error message. Remember that `fetch` does not reject automatically for HTTP error statuses.
-5. Render a `Check API` button with `onClick={checkApi}` and a paragraph showing the current status.
-6. Keep both servers running and restart the frontend if needed to apply its proxy configuration.
+1. From `apps/web`, run `vp check --fix src/App.tsx` to fix the component's formatting.
+2. Stop Go and click the button to verify a visible error; restart Go and retry to verify recovery.
+3. Resolve the other formatting findings from the initial review and rerun `vp check`.
 
 Completion checks:
 
-- Clicking the button displays `ok` after the request completes.
+- Clicking the button displays `ok` after the request completes (success reported by the user).
 - Stopping the Go server and clicking again displays an error.
 - Restarting Go and retrying recovers successfully.
-- The web production build succeeds after completing the exercise.
+- The web production build succeeds (verified in the follow-up review).
 
 ## Commands for resuming
 
@@ -63,7 +82,8 @@ go -C services/api run ./cmd/server
 React website:
 
 ```bash
-pnpm --filter web run dev
+cd apps/web
+vp run dev
 ```
 
 Check the API directly:
@@ -75,7 +95,8 @@ curl -i http://localhost:8080/api/health
 Check the web production build after finishing the exercise:
 
 ```bash
-pnpm --filter web run build
+cd apps/web
+vp run build
 ```
 
 ## Concepts discussed
@@ -85,7 +106,8 @@ pnpm --filter web run build
 - React components, JSX/TSX, and the roles of `main.tsx` and `App.tsx`.
 - Go's `main` package, entry point, HTTP router, response writer, and response headers.
 - `json.Encoder` writes JSON to a writer; `json.Marshal` returns JSON bytes. The health handler uses `Encoder` for convenience.
-- Development proxying and the planned use of React state, events, and `fetch` in the current exercise.
+- Development proxying, React state, events, and `fetch` in the API button exercise.
+- Ternary expressions, `instanceof Error`, and narrowing a caught value from `unknown` before reading `.message`.
 
 ## Later milestones
 
