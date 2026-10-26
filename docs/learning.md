@@ -24,6 +24,7 @@ Last checkpoint: 2026-10-26.
 - Connected React to Go through the development proxy. The user confirmed successful requests, visible errors when Go is stopped, and recovery after restarting Go. The production build passed during review.
 - Added a PostgreSQL 18 Compose definition. The user installed Docker and Compose and reported that running `SELECT 1;` through the container's `psql` returned `1`.
 - Connected Go to PostgreSQL with pgxpool and a five-second startup context. The user reported successful startup while PostgreSQL runs and an expected connection-refused error with exit status 1 while it is stopped.
+- Created the first Goose migration for `workouts`. The user confirmed applying it, inspecting the table, and rerunning Up without reapplying the migration.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
@@ -96,7 +97,7 @@ Completion review (2026-10-26):
 
 Status: complete. Startup connection checking was reviewed, Go compilation and formatting passed, and the user confirmed successful startup with PostgreSQL running and failure with PostgreSQL stopped.
 
-Before the next exercise, restore PostgreSQL and restart Go. Recovery after this particular database-outage check has not been separately reported.
+The user subsequently confirmed restoring PostgreSQL and restarting Go before continuing to migrations.
 
 Initial configuration steps:
 
@@ -152,11 +153,60 @@ Runtime confirmation (2026-10-26):
 - This is the expected startup error path. Connection refusal can be immediate; five seconds is the context's waiting limit, not a required delay before reporting an error.
 - Reinspected `main.go`; no application changes or additional automated checks were needed for this confirmation. These live database results were reported by the user rather than run by the agent.
 
-## Current exercise: introduce database migrations
+## Completed exercise: introduce database migrations
 
-Status: not started. Next, explain migrations as versioned database schema changes, select a migration runner, and create/apply the first small workout schema. Keep stable IDs and the ownership/change-tracking requirements in `PLAN.md` in mind when designing it.
+Status: complete. The migration was reviewed, and the user reported successful application, table inspection, and a repeat Up run with no pending migration. No migration was applied by the agent.
 
-No migration runner, migration files, or workout tables have been added or applied yet. Resume with PostgreSQL running and the Go startup connection check working.
+- Explained migrations as versioned SQL changes and Goose as the runner that records which migrations have been applied.
+- Inspected the repository and command availability: no migration files were found, and neither Goose nor golang-migrate is currently on the agent shell's PATH.
+- Verified the official Goose installation and CLI documentation. Assigned `go install github.com/pressly/goose/v3/cmd/goose@latest`, followed by a version check.
+- The local Go binary install directory is `/home/allu/go/bin` (`GOBIN`), which is not on the agent shell's PATH. For the user's current terminal, proposed `export PATH="$HOME/go/bin:$PATH"`.
+- From the project root, the user should create `services/api/migrations` and run `goose -dir services/api/migrations -s create create_workouts sql`. Expected result: a sequential migration stub named `00001_create_workouts.sql`.
+- Introduced the `-- +goose Up` section for applying the schema change and `-- +goose Down` for its rollback. Next, review the generated file and design the workout table together before applying any SQL.
+- No migration runner was installed, no migration file was generated, and no database schema was changed by the agent. No additional builds or tests were run for these instructions.
+
+Tooling confirmation and SQL exercise (2026-10-26):
+
+- The user reported Goose v3.29.0 and the expected migration file. Independently ran `/home/allu/go/bin/goose --version`: v3.29.0.
+- Inspected `services/api/migrations/00001_create_workouts.sql`: it contains the expected Up/Down annotations and sample `SELECT` statements. No workout schema is defined yet.
+- Assigned replacing the Up sample with `CREATE TABLE workouts` and the Down sample with `DROP TABLE workouts;`. One row represents a workout session; exercise/set tables will come later.
+- Proposed columns: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, `user_id TEXT NOT NULL`, `name TEXT NOT NULL`, `started_at TIMESTAMPTZ NOT NULL`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`, and `revision BIGINT NOT NULL DEFAULT 1 CHECK (revision > 0)`.
+- Stable UUIDs support future independently generated mobile IDs; `user_id` records ownership; `revision` provides the per-record edit version. This does not yet implement access control or the transactional change log; add those before exposing the relevant API writes described in `PLAN.md`.
+- Explained primary keys, required values (`NOT NULL`), and defaults. Provided a valid one-column starter structure for the user to extend with the other five columns, preserving the Goose section annotations.
+- Next: review the user's SQL, then apply and inspect the migration and verify that rerunning Up does not reapply it. No SQL file was edited or applied by the agent, and no new build/test checks were run during this instruction checkpoint.
+
+First SQL review (2026-10-26):
+
+- Inspected `00001_create_workouts.sql`: all six proposed columns, the UUID primary key, positive revision check, and Up/Down sections are present.
+- Found missing commas between column declarations (lines 3 through 7). PostgreSQL will reject this table definition; add a comma after every column except the final `revision` column.
+- Found that `created_at` is missing the proposed `DEFAULT now()`. Its declaration should be `created_at TIMESTAMPTZ NOT NULL DEFAULT now(),` so inserts can omit the creation timestamp.
+- Ran `/home/allu/go/bin/goose -dir services/api/migrations validate`: passed. This confirms Goose's file/annotation parsing; it did not catch the invalid PostgreSQL column-list syntax. The SQL has not been executed or checked by PostgreSQL.
+- Left the migration unchanged for the user to correct. Next, review those two fixes, then apply and inspect the migration.
+
+Corrected SQL review (2026-10-26):
+
+- Inspected the updated migration: commas correctly separate all six columns, and `created_at` now includes `DEFAULT now()`. The table definition and rollback look correct for PostgreSQL 18.
+- Reran `/home/allu/go/bin/goose -dir services/api/migrations validate`: passed. SQL execution against PostgreSQL is still pending.
+- Next, with PostgreSQL running and `DATABASE_URL` exported in the same terminal, run `goose -dir services/api/migrations postgres "$DATABASE_URL" up` from the project root.
+- Inspect the created schema with `sudo docker compose exec db psql -U gym_app -d gym_app -c '\d workouts'`, then rerun the same Goose Up command to verify that version tracking prevents reapplying the migration.
+- No SQL file or database schema was changed by the agent during review. Await the user's application and inspection results.
+
+Application confirmation (2026-10-26):
+
+- The user reported that applying the migration, inspecting `workouts`, and rerunning Up worked as intended. These are user-reported live database results; the agent has not run migrations or inspected the live database schema.
+- Reinspected the SQL migration and the Go startup code. No additional automated checks were run, and no application or migration code was edited during this checkpoint.
+
+## Current exercise: represent a workout in Go
+
+Status: not started. The next endpoint will be `GET /api/workouts`; begin by defining the data structure it will return.
+
+- Add a package-level `type Workout struct` in `services/api/cmd/server/main.go`, above `main`.
+- Fields and JSON names: `ID string` → `id`, `UserID string` → `user_id`, `Name string` → `name`, `StartedAt time.Time` → `started_at`, `CreatedAt time.Time` → `created_at`, and `Revision int64` → `revision`.
+- Use exported field names and `json:"..."` struct tags to control JSON property names. Explain a struct as a group of named, typed fields and connect it to the user's TypeScript knowledge.
+- Provide the `ID` field as an example and let the user fill in the remaining five. The existing `time` import can be reused.
+- Next, review the struct, then introduce a database read query, row scanning, and a JSON response. Represent UUIDs as strings in the HTTP model; use an explicit `id::text` projection if needed when scanning.
+- Keep the first read scoped to a known local development owner until authentication is introduced. Add the transactional change log and trusted ownership handling before the API writes described in `PLAN.md`.
+- No struct or endpoint has been implemented by the agent, and no database data was inserted during this checkpoint.
 
 ## Commands for resuming
 
