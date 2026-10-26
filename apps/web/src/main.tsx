@@ -1,0 +1,13 @@
+import { createRoot } from "react-dom/client";
+import { useState } from "react";
+import App from "./App";
+import "./style.css";
+
+
+const container = document.getElementById("app");
+
+if (!container) {
+  throw new Error("Missing #app element");
+}
+
+createRoot(container).render(<App />);
