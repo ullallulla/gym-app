@@ -25,6 +25,7 @@ Last checkpoint: 2026-10-26.
 - Added a PostgreSQL 18 Compose definition. The user installed Docker and Compose and reported that running `SELECT 1;` through the container's `psql` returned `1`.
 - Connected Go to PostgreSQL with pgxpool and a five-second startup context. The user reported successful startup while PostgreSQL runs and an expected connection-refused error with exit status 1 while it is stopped.
 - Created the first Goose migration for `workouts`. The user confirmed applying it, inspecting the table, and rerunning Up without reapplying the migration.
+- Defined the Go `Workout` struct with exported fields and JSON tags matching the database model. Code review, formatting, and Go compilation passed.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
@@ -196,9 +197,9 @@ Application confirmation (2026-10-26):
 - The user reported that applying the migration, inspecting `workouts`, and rerunning Up worked as intended. These are user-reported live database results; the agent has not run migrations or inspected the live database schema.
 - Reinspected the SQL migration and the Go startup code. No additional automated checks were run, and no application or migration code was edited during this checkpoint.
 
-## Current exercise: represent a workout in Go
+## Completed exercise: represent a workout in Go
 
-Status: not started. The next endpoint will be `GET /api/workouts`; begin by defining the data structure it will return.
+Status: complete. The user's `Workout` struct has the correct field names, types, and JSON tags. Formatting and Go compilation passed during review.
 
 - Add a package-level `type Workout struct` in `services/api/cmd/server/main.go`, above `main`.
 - Fields and JSON names: `ID string` → `id`, `UserID string` → `user_id`, `Name string` → `name`, `StartedAt time.Time` → `started_at`, `CreatedAt time.Time` → `created_at`, and `Revision int64` → `revision`.
@@ -207,6 +208,60 @@ Status: not started. The next endpoint will be `GET /api/workouts`; begin by def
 - Next, review the struct, then introduce a database read query, row scanning, and a JSON response. Represent UUIDs as strings in the HTTP model; use an explicit `id::text` projection if needed when scanning.
 - Keep the first read scoped to a known local development owner until authentication is introduced. Add the transactional change log and trusted ownership handling before the API writes described in `PLAN.md`.
 - No struct or endpoint has been implemented by the agent, and no database data was inserted during this checkpoint.
+
+Struct review (2026-10-26):
+
+- Inspected the user's package-level `Workout` struct: all six fields are exported, both timestamp fields use `time.Time`, the revision uses `int64`, and all JSON names match the exercise. No corrections were needed.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings.
+- Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: passed compilation; no test files exist, so no behavioral test cases ran.
+- No JSON endpoint or live database query was exercised. No application code was edited by the agent.
+
+Goose PATH troubleshooting (2026-10-26):
+
+- The user reported that Goose works in the existing terminal but not in newly opened terminals. Their login shell is `/bin/fish`, confirmed through the local account entry.
+- Verified that `/home/allu/go/bin/goose` exists and that `GOBIN` is `/home/allu/go/bin`. A fresh interactive Fish shell does not include that directory in PATH and cannot locate `goose`.
+- Fish's existing universal `fish_user_paths` includes `/usr/local/go/bin` and `/home/allu/.local/bin`, but not `/home/allu/go/bin`. The earlier `export PATH=...` instruction only affected the terminal in which it was run.
+- Proposed the persistent Fish command `fish_add_path --universal /home/allu/go/bin`, followed by opening a new terminal and checking `command -s goose` and `goose --version`.
+- No home-directory configuration was changed by the agent. Await the user's persistent-path result. The agent's tool shell uses Bash, so invoking Goose by its verified absolute path remains available independently of Fish's universal variables.
+
+## Current exercise: list workouts through the Go API
+
+Status: the empty-array handler is implemented, reviewed, and includes the suggested error detail in its log message. The database-read exercise is now assigned; its implementation and runtime verification are pending. The earlier empty-array HTTP response has not been explicitly confirmed by the user.
+
+First step:
+
+1. Register `GET /api/workouts` using `mux.HandleFunc`, after the health handler and before starting HTTP.
+2. Inside the handler, initialize `workouts := make([]Workout, 0)`. Explain `[]Workout` as a slice of workouts, similar to TypeScript's `Workout[]`; an initialized empty slice encodes as `[]`.
+3. Set `Content-Type` to `application/json`, encode `workouts` using the existing health-handler pattern, and log any response-writing error.
+4. Restart Go and verify `curl -i http://localhost:8080/api/workouts` returns HTTP 200, the JSON content type, and `[]`.
+5. Review the user's implementation, then add the database read to populate the slice.
+
+No handler was added and no new checks were run by the agent during this instruction checkpoint.
+
+- Use a new request context derived from `r.Context()` for database work; the startup context has already been canceled.
+- Scope the first read to a known local development owner, using a parameterized `WHERE user_id = $1` query. Authentication will later supply the trusted user identity.
+- Select columns explicitly, using `id::text` for the string ID representation. Explain row iteration/scanning and cleanup, including checking errors after iteration.
+- Initialize an empty slice so an empty database result is encoded as `[]`. Handle request errors with an HTTP response rather than terminating the server.
+- The empty-array handler is present; no database read has been implemented or run yet. Introduce the query in small steps; the transactional change-log requirement still applies before adding API writes.
+
+Empty-array handler review (2026-10-26):
+
+- Inspected `GET /api/workouts`: it is registered before HTTP startup, sets the JSON content type, initializes an empty `[]Workout` slice, and encodes it with an error check. This is correct for the current step.
+- Suggested changing its log message to `log.Printf("failed to write workouts response: %v", err)` so response-writing failures include the actual error.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings.
+- Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: passed compilation; there are no test files, so no behavioral cases ran.
+- The HTTP response has not been independently exercised or reported by the user yet. Next, restart Go and check the route with curl, then introduce the database query.
+- No application code was edited by the agent during review.
+
+Database-read exercise guidance (2026-10-26):
+
+- Reinspected the handler and schema, and read the installed pgxpool Query and pgx Rows documentation. No application code was edited or checks rerun during this instruction checkpoint.
+- Assigned a five-second request context using `context.WithTimeout(r.Context(), 5*time.Second)` and `defer cancel()` inside the handler.
+- Query columns in order: `id::text, user_id, name, started_at, created_at, revision` from `workouts`, with `WHERE user_id = $1 ORDER BY started_at DESC, id DESC`. Pass `"local-dev"` separately as the first parameter; this is a temporary fixed development owner.
+- Handle `pool.Query` errors by logging the actual error, sending HTTP 500 with a generic message, and returning. On success, `defer rows.Close()` releases the result set and its pooled connection when the handler returns.
+- Keep the initialized empty `[]Workout` slice, iterate with `rows.Next()`, scan into a fresh `Workout` using field addresses in the SELECT order, and append each successful row to the slice. Check scan errors and `rows.Err()` after iteration using the same HTTP error pattern.
+- Move the JSON content-type assignment to immediately before the final encoder call, after database processing succeeds. Preserve the existing encoding error log.
+- The next review should check context usage, parameter binding, scan order, error returns, row cleanup, and empty-array behavior before introducing sample data. No database query has been run by the agent or reported for this handler yet.
 
 ## Commands for resuming
 

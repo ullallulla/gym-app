@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type Workout struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	Name      string    `json:"name"`
+	StartedAt time.Time `json:"started_at"`
+	CreatedAt time.Time `json:"created_at"`
+	Revision  int64     `json:"revision"`
+}
+
 func main() {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -45,6 +54,16 @@ func main() {
 
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("failed to write health response: %v", err)
+		}
+	})
+
+	mux.HandleFunc("GET /api/workouts", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		workouts := make([]Workout, 0)
+
+		if err := json.NewEncoder(w).Encode(workouts); err != nil {
+			log.Printf("failed to write workouts response: %v", err)
 		}
 	})
 
