@@ -21,12 +21,14 @@ Last checkpoint: 2026-10-26.
 - Configured the frontend development proxy to forward `/api` to `http://127.0.0.1:8080`.
 - Separated `App` into `apps/web/src/App.tsx`; `main.tsx` mounts it into the HTML `#app` element.
 - Removed unused starter assets from `src`. `public/favicon.svg` remains referenced by `index.html`.
+- Connected React to Go through the development proxy. The user confirmed successful requests, visible errors when Go is stopped, and recovery after restarting Go. The production build passed during review.
+- Added a PostgreSQL 18 Compose definition. The user installed Docker and Compose and reported that running `SELECT 1;` through the container's `psql` returned `1`.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
-## Current exercise: connect React to Go
+## Completed exercise: connect React to Go
 
-Status: implementation reviewed and production build passing. Formatting and manual failure/recovery checks remain. The user reported that the request works after switching to the relative URL `/api/health`.
+Status: complete. The user confirmed successful requests, visible failures while Go is stopped, and recovery after restarting it. The production build passed during review, and the component now passes formatting and lint checks.
 
 Current code state:
 
@@ -56,18 +58,50 @@ Follow-up review (2026-10-26):
 - Did not repeat the test runner: no test files were added since its previous no-tests result. Browser failure and recovery behavior remain unverified.
 - Application code was reviewed without edits.
 
-Resume with these steps:
+Completion confirmation (2026-10-26):
 
-1. From `apps/web`, run `vp check --fix src/App.tsx` to fix the component's formatting.
-2. Stop Go and click the button to verify a visible error; restart Go and retry to verify recovery.
-3. Resolve the other formatting findings from the initial review and rerun `vp check`.
+- User-reported runtime results: stopping Go produces a visible error; restarting Go and retrying returns the status to `ok`. These browser checks were performed by the user.
+- Inspected the latest `App.tsx`: the user has formatted it, and the reviewed request/loading/error behavior remains present.
+- Ran `vp check src/App.tsx`: formatting and lint both passed.
+- Formatting findings in other web files from the initial review have not been rechecked. No new builds or tests were needed for this confirmation.
 
 Completion checks:
 
 - Clicking the button displays `ok` after the request completes (success reported by the user).
-- Stopping the Go server and clicking again displays an error.
-- Restarting Go and retrying recovers successfully.
+- Stopping the Go server and clicking again displays an error (reported by the user).
+- Restarting Go and retrying recovers successfully (reported by the user).
 - The web production build succeeds (verified in the follow-up review).
+
+## Completed exercise: run PostgreSQL locally
+
+Status: complete. The user confirmed installing Docker and Compose, creating `compose.yaml`, and successfully running `SELECT 1;`.
+
+- Inspected the local environment: CachyOS (Arch-based). Neither Docker, Podman, nor PostgreSQL executables are currently on this terminal's PATH; no existing Compose or database setup files were found in the repository.
+- Recommended Docker Compose and compared it with native installation. The user then requested Docker/PostgreSQL installation instructions for Arch Linux.
+- Provided installation steps using the Arch `docker` and `docker-compose` packages, the Docker systemd service, and a `hello-world` check. Docker commands use `sudo`; no Docker group membership change is required for these steps.
+- Proposed a root `compose.yaml` using `postgres:18`, a `db` service, database/user `gym_app`, local development password `gym_app_dev`, a port binding at `127.0.0.1:5432`, a named volume mounted at `/var/lib/postgresql`, and a `pg_isready` health check.
+- The user should create the Compose file, run `sudo docker compose up --wait`, then verify `SELECT 1;` through `sudo docker compose exec db psql -U gym_app -d gym_app -c "SELECT 1;"`.
+- At the instruction checkpoint, no database software had been installed, no Compose file had been created, and no container or database query had been run by the agent.
+
+Completion review (2026-10-26):
+
+- User-reported runtime result: Docker and Compose were installed, the Compose file was created, and the container `psql` command returned `1` for `SELECT 1;`.
+- Inspected the actual root `compose.yaml`: PostgreSQL 18, the expected database/user, loopback port binding, a named volume at the correct mount location, and the readiness check are present.
+- Ran `docker compose version`: v5.6.1. Ran `docker compose config --quiet`: passed.
+- Did not run a container query or independently verify database connectivity. No application code or Compose configuration was edited during this review.
+- Discussed `docker compose stop` versus `down` and how named volumes preserve database data by default.
+
+## Current exercise: connect Go to PostgreSQL
+
+Status: not yet implemented. Start with a small configuration exercise before adding the database driver.
+
+1. In the terminal used to run Go, export `DATABASE_URL='postgres://gym_app:gym_app_dev@127.0.0.1:5432/gym_app?sslmode=disable'`.
+2. Add the standard-library `os` import in `services/api/cmd/server/main.go`.
+3. At the start of `main`, read the connection string with `os.Getenv("DATABASE_URL")`.
+4. If it is empty, stop startup with `log.Fatal` and a clear message. If it is set, continue starting the existing API normally.
+5. Review the user's attempt and verify startup with and without the environment variable.
+
+The next part will introduce the pgxpool dependency, a context with a timeout, pool creation, and an explicit `Ping` to verify connectivity. Explain multiple return values and resource cleanup as they arise. Migrations and the first workout table follow successful Go-to-database connectivity.
 
 ## Commands for resuming
 
