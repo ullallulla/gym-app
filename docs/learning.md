@@ -27,6 +27,7 @@ Last checkpoint: 2026-10-26.
 - Created the first Goose migration for `workouts`. The user confirmed applying it, inspecting the table, and rerunning Up without reapplying the migration.
 - Defined the Go `Workout` struct with exported fields and JSON tags matching the database model. Code review, formatting, and Go compilation passed.
 - Implemented `GET /api/workouts` with a request timeout, an owner-filtered PostgreSQL query, row scanning, and JSON output. The user confirmed empty/populated results, HTTP 500 during a database outage while Go remains running, and successful recovery with the stored workout preserved.
+- Added a React workout list with a typed response, separate loading/status state, manual fetching, and keyed rendering. The user reported it working; the corrected component passed formatting/lint and the production build.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
@@ -303,9 +304,9 @@ Request-time outage/recovery confirmation (2026-10-26):
 - A different-owner sample and authentication have not been tested or introduced; the existing fixed `local-dev` owner filter remains a development step.
 - Inspected the frontend and roadmap to prepare the next exercise. No application code edits or additional builds/tests were needed at this checkpoint.
 
-## Current exercise: display workouts in React
+## Completed exercise: display workouts in React
 
-Status: not started. `App.tsx` still contains only the health-check UI. Goal: a Load workouts button fetches the API and displays `Push day`.
+Status: complete implementation, reviewed with passing component formatting/lint and production build. The user reported the fix working. Detailed browser failure/recovery results have not been separately described or checked by the agent.
 
 1. Above `App`, define a TypeScript `Workout` type matching the JSON: `id`, `user_id`, and `name` are strings; `started_at` and `created_at` are strings because they arrive as JSON timestamp strings; `revision` is a number.
 2. Inside `App`, add typed array state with `useState<Workout[]>([])` and a separate workout-status string, initially `"Not loaded"`.
@@ -314,6 +315,33 @@ Status: not started. `App.tsx` still contains only the health-check UI. Goal: a 
 5. Review the implementation, run appropriate web checks/build, and verify the browser success/error/recovery behavior with both development servers running.
 
 Provided the type/state declarations and a small list-rendering example; the user should adapt their existing fetch handler. No React application code was edited by the agent and no browser verification has been performed for this exercise.
+
+First React workout-list review (2026-10-26):
+
+- The user reported that the feature works on their end. Inspected `App.tsx`: the response type, typed array state, separate status, relative fetch URL, HTTP status check, array assignment, button, and keyed name list are correct for the success path.
+- Found that the catch block evaluates `error instanceof Error ? error.message : "Unknown error"` without assigning it, then interpolates `message`. Add `const message =` before that ternary; otherwise a failed request triggers a reference error rather than updating the status.
+- Ran `vp run build` from `apps/web`: failed at `App.tsx:46` with `TS2552`, cannot find name `message`.
+- Ran `vp check`: formatting failed for `package.json`, `src/App.tsx`, `src/main.tsx`, and `vite.config.ts`. Only `App.tsx` is part of the current frontend code diff; the other formatting findings were already observed earlier.
+- Ran `vp check --no-fmt src/App.tsx`: zero lint errors and one `no-unused-expressions` warning for the unassigned ternary.
+- Ran `vp test`: exited with code 1 because no test files exist. No browser checks were performed by the agent, and no React code was edited during review.
+- Next: fix the missing assignment, format the component with `vp check --fix src/App.tsx`, rerun the build/check, and verify that stopping PostgreSQL while Go stays running gives a visible error when clicking Load workouts; restore PostgreSQL and retry to confirm browser recovery.
+
+Corrected React workout-list review (2026-10-26):
+
+- The user reported the issue fixed and the feature working. Inspected `App.tsx`: the catch block now declares `const message`, all response fields and state types are correct, and the component is formatted.
+- Ran `vp check src/App.tsx`: formatting passed, with no lint warnings or errors.
+- Ran `vp run build` from `apps/web`: TypeScript and production bundling both passed.
+- Did not repeat `vp test`: no test files were added since its earlier no-tests result. The three previously noted formatting findings outside `App.tsx` were not rechecked or modified.
+- No React code was edited or browser checks run by the agent. The user reported working behavior after the fix; specific browser outage/recovery observations remain unreported.
+
+## Current exercise: prepare workout creation
+
+Status: not started. The next milestone is a React form that creates a workout through `POST /api/workouts`.
+
+- Follow `PLAN.md` before adding API writes: introduce a transactional per-user change log and ensure the workout insert and its change record commit together.
+- Keep ownership server-controlled. The local development owner may be fixed until Clerk is introduced; do not derive ownership from a caller-supplied `user_id`.
+- Use a new migration for the change log, preserving the already-applied workout migration. Introduce the transaction and schema concepts in a small exercise before implementing the write handler and form.
+- No creation form, write handler, change-log migration, or corresponding runtime checks have been implemented yet.
 
 ## Commands for resuming
 
