@@ -26,6 +26,7 @@ Last checkpoint: 2026-10-26.
 - Connected Go to PostgreSQL with pgxpool and a five-second startup context. The user reported successful startup while PostgreSQL runs and an expected connection-refused error with exit status 1 while it is stopped.
 - Created the first Goose migration for `workouts`. The user confirmed applying it, inspecting the table, and rerunning Up without reapplying the migration.
 - Defined the Go `Workout` struct with exported fields and JSON tags matching the database model. Code review, formatting, and Go compilation passed.
+- Implemented `GET /api/workouts` with a request timeout, an owner-filtered PostgreSQL query, row scanning, and JSON output. The user confirmed empty/populated results, HTTP 500 during a database outage while Go remains running, and successful recovery with the stored workout preserved.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
@@ -224,9 +225,9 @@ Goose PATH troubleshooting (2026-10-26):
 - Proposed the persistent Fish command `fish_add_path --universal /home/allu/go/bin`, followed by opening a new terminal and checking `command -s goose` and `goose --version`.
 - No home-directory configuration was changed by the agent. Await the user's persistent-path result. The agent's tool shell uses Bash, so invoking Goose by its verified absolute path remains available independently of Fish's universal variables.
 
-## Current exercise: list workouts through the Go API
+## Completed exercise: list workouts through the Go API
 
-Status: the empty-array handler is implemented, reviewed, and includes the suggested error detail in its log message. The database-read exercise is now assigned; its implementation and runtime verification are pending. The earlier empty-array HTTP response has not been explicitly confirmed by the user.
+Status: complete for the local development read endpoint. Formatting and compilation passed during review. The user confirmed empty/populated responses and request-time database outage/recovery behavior.
 
 First step:
 
@@ -242,7 +243,7 @@ No handler was added and no new checks were run by the agent during this instruc
 - Scope the first read to a known local development owner, using a parameterized `WHERE user_id = $1` query. Authentication will later supply the trusted user identity.
 - Select columns explicitly, using `id::text` for the string ID representation. Explain row iteration/scanning and cleanup, including checking errors after iteration.
 - Initialize an empty slice so an empty database result is encoded as `[]`. Handle request errors with an HTTP response rather than terminating the server.
-- The empty-array handler is present; no database read has been implemented or run yet. Introduce the query in small steps; the transactional change-log requirement still applies before adding API writes.
+- The database query and row-reading handler are implemented. The transactional change-log requirement still applies before adding API writes.
 
 Empty-array handler review (2026-10-26):
 
@@ -262,6 +263,57 @@ Database-read exercise guidance (2026-10-26):
 - Keep the initialized empty `[]Workout` slice, iterate with `rows.Next()`, scan into a fresh `Workout` using field addresses in the SELECT order, and append each successful row to the slice. Check scan errors and `rows.Err()` after iteration using the same HTTP error pattern.
 - Move the JSON content-type assignment to immediately before the final encoder call, after database processing succeeds. Preserve the existing encoding error log.
 - The next review should check context usage, parameter binding, scan order, error returns, row cleanup, and empty-array behavior before introducing sample data. No database query has been run by the agent or reported for this handler yet.
+
+Row-loop example requested (2026-10-26):
+
+- Inspected the user's draft: the query and cleanup are in the correct handler scope, the loop is correctly placed after slice initialization, and JSON headers/encoding follow the loop. The loop body is currently empty, and `rows.Err()` has not yet been checked.
+- At the user's request, provided the complete loop body: declare a fresh `Workout`, scan all six fields in query order using addresses, handle scan errors with logging/HTTP 500/return, then append the populated workout.
+- Also provided the post-loop `rows.Err()` check to place before the JSON header and encoding.
+- No Go application code was edited or checks run on this unfinished draft. Next, review the completed loop and iteration-error handling before runtime verification.
+
+Complete read-handler review (2026-10-26):
+
+- Inspected the completed handler: its request context has a timeout, the query passes the owner as a parameter, the UUID is projected as text, and the six scan destinations match the SELECT order. It appends only successfully scanned workouts.
+- Confirmed that query, scan, and iteration errors log details, send HTTP 500, and return before JSON encoding. The initialized empty slice, delayed JSON header, response-writing error log, and deferred row/context cleanup are correct for the current local development endpoint.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings.
+- Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: passed compilation; no automated test files exist, so no behavioral cases ran.
+- No corrections or Go application edits were made. No live HTTP request or database read was run by the agent.
+- Next: restart Go and call `curl -i http://localhost:8080/api/workouts`. Expect HTTP 200 and a JSON array; it will be empty if there are no workouts with `user_id = 'local-dev'`. After confirming this, introduce one matching sample row and verify all six returned fields to exercise scanning, then check owner filtering and error behavior as appropriate.
+
+Empty-result runtime confirmation (2026-10-26):
+
+- Inspected the user's terminal screenshot: `curl -i http://localhost:8080/api/workouts` returned `HTTP/1.1 200 OK`, `Content-Type: application/json`, and `[]`.
+- This is a user-supplied runtime result, not an HTTP request or database query executed by the agent. It confirms the empty response case; populated-row scanning has not been demonstrated yet.
+- Assigned inserting one sample workout directly through the container's `psql`: `INSERT INTO workouts (user_id, name, started_at) VALUES ('local-dev', 'Push day', now()) RETURNING *;`. The owner must match the handler's fixed development filter.
+- Omitted `id`, `created_at`, and `revision` use the table's defaults. After insertion, exit psql with `\q` and rerun curl; expect a JSON array containing the new workout and revision 1.
+- No database data was inserted or code edited by the agent. No additional builds or tests were run for this instruction checkpoint.
+
+Populated-result runtime confirmation (2026-10-26):
+
+- The user supplied the API's JSON array after inserting a sample row. It contains all six expected fields: a generated UUID, `user_id` of `local-dev`, name `Push day`, populated `started_at` and `created_at` timestamp strings, and revision 1.
+- This user-provided runtime result confirms that the matching-row query, field scanning, slice population, and JSON serialization work together. The agent did not perform the insert or HTTP request.
+- Next, keep Go running while stopping only the Compose `db` service. Call the workouts endpoint and expect HTTP 500 with `Could not load workouts`; the HTTP server should remain running. Restart PostgreSQL with `sudo docker compose up --wait` and repeat the request, expecting HTTP 200 and the same stored workout.
+- This differs from the earlier startup-outage check: it exercises request error handling, pooled-connection recovery, and persistence across a database restart. These results are not yet confirmed.
+- No code edits or additional automated checks were needed for this confirmation. After runtime verification, the next feature is displaying the returned workouts in React.
+
+Request-time outage/recovery confirmation (2026-10-26):
+
+- The user reported that the instructed runtime checks worked as intended: with Go kept running and PostgreSQL stopped, the workouts endpoint returned HTTP 500; after restarting PostgreSQL, it returned HTTP 200 and the stored workout again.
+- These are user-reported runtime results. No HTTP request, database stop/start, or insert was performed by the agent.
+- A different-owner sample and authentication have not been tested or introduced; the existing fixed `local-dev` owner filter remains a development step.
+- Inspected the frontend and roadmap to prepare the next exercise. No application code edits or additional builds/tests were needed at this checkpoint.
+
+## Current exercise: display workouts in React
+
+Status: not started. `App.tsx` still contains only the health-check UI. Goal: a Load workouts button fetches the API and displays `Push day`.
+
+1. Above `App`, define a TypeScript `Workout` type matching the JSON: `id`, `user_id`, and `name` are strings; `started_at` and `created_at` are strings because they arrive as JSON timestamp strings; `revision` is a number.
+2. Inside `App`, add typed array state with `useState<Workout[]>([])` and a separate workout-status string, initially `"Not loaded"`.
+3. Add an async `loadWorkouts` handler, following `checkApi`: set a loading message, fetch `/api/workouts`, check `response.ok` before parsing JSON, store the returned array, and update the workout status. Handle errors with the existing `instanceof Error` pattern and show a useful status message.
+4. Add a Load workouts button and status paragraph, and render workout names in a list using `.map()` and `key={workout.id}`.
+5. Review the implementation, run appropriate web checks/build, and verify the browser success/error/recovery behavior with both development servers running.
+
+Provided the type/state declarations and a small list-rendering example; the user should adapt their existing fetch handler. No React application code was edited by the agent and no browser verification has been performed for this exercise.
 
 ## Commands for resuming
 
@@ -307,4 +359,4 @@ vp run build
 
 ## Later milestones
 
-After completing the frontend-to-backend connection, introduce PostgreSQL and migrations, then build a small persistent workout flow. Clerk, TanStack Router/Query, dashboards, food logging, Expo/SQLite synchronization, and encrypted S3 backups are still future work described in `PLAN.md`.
+After displaying workouts in React, build the first persistent workout write flow, including the transactional change log and trusted ownership handling required by `PLAN.md` before exposing writes. Clerk, TanStack Router/Query, dashboards, food logging, Expo/SQLite synchronization, and encrypted S3 backups remain future work.
