@@ -4,7 +4,7 @@ Last checkpoint: 2026-10-27.
 
 ## Resume here
 
-Session resumed on 2026-10-27. **The `CreateWorkoutRequest` exercise has not been started.** The current assignment is that small Go exercise; review the user's attempt once they have added it.
+Session resumed on 2026-10-27. **The Go creation flow's persistence, intentional late failure/rollback, and recovery exercises are user-confirmed.** The correct `create` operation is restored and inspected; formatting and compilation pass. Next, start the React creation form with a controlled workout-name input in `App.tsx`, then introduce submission in a following exercise.
 
 Working at this checkpoint:
 
@@ -13,26 +13,33 @@ Working at this checkpoint:
 - React's Load workouts button displays the stored `Push day` sample. The user reported the read flow working, including API database-outage/recovery checks.
 - Goose migration 1 creates `workouts`; migration 2 creates `user_change_counters` and `change_log`. The user reported applying and inspecting both successfully. The agent reviewed SQL and ran Goose file validation, but did not execute migrations or inspect the live database.
 - Transaction practice demonstrated that an inserted row is visible inside its transaction and disappears after `ROLLBACK` (user-reported).
+- `POST /api/workouts` decodes a bounded 1 MiB request, rejects decoder errors/unknown fields and extra JSON values, trims/requires a name, and requires a nonzero start time. The user confirmed these input-validation exercises before commit was introduced.
+- After validation, POST uses a five-second request context and a pgx transaction. It allocates the server-selected `local-dev` owner's change number first, holding the counter row lock, then inserts/scans the workout and serializes its complete snapshot.
+- The change-log INSERT uses that same transaction and the owner, allocated sequence, workout ID/revision, JSON payload, and fixed `workout`/`create` values. Every write/marshal error is logged and returns HTTP 500 with an immediate return.
+- `tx.Commit(ctx)` runs after the event INSERT and before success headers/body. Commit errors are logged and return HTTP 500 immediately. On success, POST sets JSON content type, writes HTTP 201, and encodes the inserted `workout`. Deferred rollback/cancellation are retained; the temporary payload log is removed. Review and formatting/compilation pass. The user reports the commit/persistence exercise works as intended after checking the counter; no exact new counts or separate ID/revision/payload comparison were reported.
+- The earlier rollback exercises were user-confirmed: a valid HTTP 200 POST left the workout count at 1 before and after, the counter was observed absent before/after an earlier request, and the payload/event-insert exercises reportedly worked as intended. The later commit/persistence and intentional invalid-operation failure/rollback/recovery exercises are also user-confirmed. The agent confirmed `create` is restored by inspecting the source. No POST runtime or database checks were independently run by the agent, and a detailed event/workout payload comparison has not been separately reported.
 
 Exact next exercise:
 
-1. In `services/api/cmd/server/main.go`, after `Workout` and before `main`, define a package-level `CreateWorkoutRequest` struct.
-2. Add `Name string` with JSON tag `json:"name"` and `StartedAt time.Time` with JSON tag `json:"started_at"`.
-3. Review the user's attempt. The client supplies these two values; the server assigns ID, owner, creation time, and revision.
+1. In `apps/web/src/App.tsx`, inside `App` beside the existing state declarations, add `const [workoutName, setWorkoutName] = useState("")`.
+2. Render an accessible label and text input: label `htmlFor="workout-name"`, input `id="workout-name"`, `value={workoutName}`, and `onChange={(event) => setWorkoutName(event.target.value)}`.
+3. Explain the controlled-input loop: React state supplies the displayed value, and typing calls the setter to update that state. Keep the existing API/list UI. No POST submission is assigned in this first UI exercise.
+4. Review the user's input implementation and run appropriate Vite+ checks/build after changes. The next exercise will add a form submission handler, creation status, and pending state.
+5. For the first submission version, send the typed name and `started_at: new Date().toISOString()` to POST /api/workouts, using the submission time as the workout start. Add a user-selected start time later if needed. On success clear the field and reload workouts, while preserving clear creation/list error states.
 
 Ideas for the following steps, to introduce one at a time:
 
-1. Add a POST handler that decodes and validates one JSON request. Handle an invalid body, unknown fields, a blank/whitespace-only name, and a missing start time before database work. Keep the request body bounded.
-2. Use a request timeout and a pgx transaction. Initialize/increment the server-selected owner's counter inside the transaction, acquiring its row lock before writing workout data. Allocate change numbers transactionally; a PostgreSQL sequence alone does not establish commit ordering.
-3. Insert the workout and read its generated fields, serialize that snapshot into the change-log payload, insert the matching `create` event, and commit together. Roll back on failure and return HTTP 201 only after commit succeeds.
-4. Verify that a successful request creates the workout/event and advances the counter, while a failed transaction leaves all three unchanged. Ownership stays server-controlled (`local-dev` during this learning phase).
-5. Add a small React creation form and reload the workout list after a successful POST. Authentication, mobile synchronization, and other roadmap features remain later work in `PLAN.md`.
+1. Review the controlled workout-name input, then add form submission to the existing POST endpoint.
+2. Track creation status/pending state, prevent duplicate clicks while pending, and clear/reload the list after a successful creation.
+3. Verify browser success, API/database failure, and recovery. Inspect event/workout ID, revision, and payload alignment if not already checked.
+4. Preserve server-controlled `local-dev` ownership during this phase; authentication remains later roadmap work.
+5. Authentication, mobile synchronization, and other roadmap features remain later work in `PLAN.md`.
 
-Latest checks actually run: Go formatting and compilation passed during the read-handler review; `vp check src/App.tsx` and `vp run build` passed after fixing the React catch block; Goose file validation passed after fixing migration 2. There are no automated test files yet. The full web formatting check previously flagged three unchanged files outside `App.tsx`; these were not corrected or rechecked. No tests were run for this save-only checkpoint.
+Latest checks actually run: Go formatting and `go test ./...` passed after confirming restoration of the valid event operation on 2026-10-27. There are no Go test files, so this verifies compilation rather than runtime behavior. The earlier counter-draft compilation failure is resolved. `vp install` passed at session start. Previous web checks (`vp check src/App.tsx` and `vp run build`) and Goose file validation passed on 2026-10-26. The full web formatting check previously flagged three unchanged files outside `App.tsx`; these were not corrected or rechecked. No live API or database checks have been run by the agent for the POST exercises.
 
 Tooling: the user's login shell is Fish. Global Vite+ is installed; the agent's Bash shell can source `/home/allu/.config/vite-plus/env` when needed. Goose v3.29.0 is installed at `/home/allu/go/bin/goose`. If a fresh Fish terminal cannot find it, the proposed persistent fix is `fish_add_path --universal /home/allu/go/bin`; persistence has not been separately confirmed by the user.
 
-Restart commands are in **Commands for resuming** below. Start PostgreSQL first and set `DATABASE_URL` again in a new terminal. At shutdown, `docs/learning.md` is modified and migration 2 is saved locally but still untracked in Git. No Git commit was made by the agent.
+Restart commands are in **Commands for resuming** below. Start PostgreSQL first and set `DATABASE_URL` again in a new terminal. Current local edits include `docs/learning.md` and `services/api/cmd/server/main.go`; migration 2 is now tracked. No Git commit was made by the agent.
 
 ## How we are working
 
@@ -61,6 +68,7 @@ Restart commands are in **Commands for resuming** below. Start PostgreSQL first 
 - Implemented `GET /api/workouts` with a request timeout, an owner-filtered PostgreSQL query, row scanning, and JSON output. The user confirmed empty/populated results, HTTP 500 during a database outage while Go remains running, and successful recovery with the stored workout preserved.
 - Added a React workout list with a typed response, separate loading/status state, manual fetching, and keyed rendering. The user reported it working; the corrected component passed formatting/lint and the production build.
 - Practiced SQL rollback and added the per-user counter/change-log migration. The user confirmed the rollback exercise and reported applying and inspecting the second migration successfully.
+- Implemented the bounded/validated Go workout-creation endpoint with transactional counter allocation, workout insertion, a JSON snapshot event, commit/error handling, and HTTP 201. The user confirmed persistence, intentional late failure with unchanged stored state, and recovery. The agent reviewed the code and checked formatting/compilation; no independent runtime/database tests were run.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
@@ -367,14 +375,14 @@ Corrected React workout-list review (2026-10-26):
 - Did not repeat `vp test`: no test files were added since its earlier no-tests result. The three previously noted formatting findings outside `App.tsx` were not rechecked or modified.
 - No React code was edited or browser checks run by the agent. The user reported working behavior after the fix; specific browser outage/recovery observations remain unreported.
 
-## Current exercise: prepare workout creation
+## Current exercise: add workout creation in React
 
-Status: resumed with the `CreateWorkoutRequest` exercise assigned; implementation is pending. The user confirmed applying the second migration and inspecting both tables successfully. The creation request type, POST handler, transaction, and form remain unimplemented.
+Status: The full local-development POST implementation is reviewed with formatting/compilation passing. The user reports persistence, intentional late failure/rollback, and recovery work as intended. The valid `create` operation is restored and inspected. Deferred execution and error-variable scope are understood. A controlled React workout-name input is assigned but unimplemented; form submission follows its review. The user previously confirmed applying the second migration and inspecting both tables successfully.
 
-- Follow `PLAN.md` before adding API writes: introduce a transactional per-user change log and ensure the workout insert and its change record commit together.
+- Follow `PLAN.md`: keep workout writes and their change-log records in the same transaction, allocating the owner's counter before writing workout data.
 - Keep ownership server-controlled. The local development owner may be fixed until Clerk is introduced; do not derive ownership from a caller-supplied `user_id`.
-- Use a new migration for the change log, preserving the already-applied workout migration. Introduce the transaction and schema concepts in a small exercise before implementing the write handler and form.
-- No creation form or write handler has been implemented. The corrected second migration defines both tables, and the user reported applying and inspecting them successfully. The agent has not run database commands to verify them independently.
+- Preserve the already-applied migrations. The user reported applying and inspecting the counter/change-log migration; the agent has not independently run database commands to verify it.
+- The Go write handler is implemented and reviewed; the React creation form has not been implemented. Begin with a controlled name input, then add submission/status/pending state and list reload in small steps.
 
 Transaction introduction (2026-10-26):
 
@@ -452,6 +460,192 @@ Session resumed (2026-10-27):
 - Reassigned the package-level request-type exercise described above. No application code was edited and no new runtime results were reported by the user.
 - Ran the required `vp install`: passed with dependencies already up to date. No builds, tests, migrations, or live database checks were run for this instruction checkpoint.
 
+Request-type review (2026-10-27):
+
+- Inspected the user's updated `main.go`: `CreateWorkoutRequest` is correctly declared between `Workout` and `main`, with exported `Name string` and `StartedAt time.Time` fields and the expected JSON tags.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned the bounded, strict POST-body decoding exercise in **Resume here**. Single-value checks and field validation follow its review, before any database writes. The temporary success response should echo the request and does not establish persistence.
+- No Go application code was edited by the agent, and no live API or database checks were run.
+
+POST decoding guidance (2026-10-27):
+
+- Inspected the user's partial `POST /api/workouts` handler: it declares `request`, creates a decoder around a 1 MiB `http.MaxBytesReader`, calls `DisallowUnknownFields`, and sets the JSON response content type.
+- The user requested examples for decoding/error handling and echoing the response. Provided a snippet to add after `DisallowUnknownFields`: decode into `&request`, return HTTP 400 on error, then set the JSON content type and encode `request`, logging response-write failures.
+- The snippet is guidance for the user to apply. At inspection, `request` is still unused and the handler does not decode or write a response body. No application code was edited, and no builds, tests, live API calls, or database checks were run for this incomplete draft.
+- Next, review the completed echo handler, then introduce single-value and field validation before database writes.
+
+POST echo-handler review (2026-10-27):
+
+- Inspected the completed handler: it decodes into `&request`, returns HTTP 400 immediately on a decoding error, sets the JSON content type after successful decoding, and encodes the request into the response while logging write failures. Registration, the 1 MiB reader, and unknown-field rejection are correct for this exercise.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned curl verification of a valid request and unknown-field rejection. These runtime results remain pending; no live API calls or database checks were run by the agent.
+- Explained that the endpoint currently echoes input without saving it. Name/time validation and rejection of additional JSON values remain the next implementation steps before database work.
+- No Go application code was edited by the agent.
+
+Echo runtime confirmation and single-value exercise (2026-10-27):
+
+- The user reported that the echo handler works as intended after the valid-request and unknown-field curl exercise. This is a user-reported runtime result; malformed-JSON behavior was not separately reported, and no live API calls were run by the agent.
+- Reinspected the POST handler: it still performs one decode and then echoes the request. Explained that a decoder reads one JSON value per call, so additional JSON currently goes unchecked.
+- Assigned a second decode into `var extra any`, accepting only `io.EOF` and returning HTTP 400 for every other outcome, before writing response headers. The user should add the `io` import and then verify single-value success and rejection of an appended object.
+- No application code was edited, and no builds, tests, or database checks were repeated for this confirmation. Previous formatting and compilation checks remain the latest agent-run checks.
+
+Single-value review and runtime confirmation (2026-10-27):
+
+- The user reported the single-value exercise works as intended. This is a user-reported runtime result; no live API requests were run by the agent.
+- Inspected `main.go`: `io` is imported, `extra` is declared as `any`, and the second decode correctly rejects every result other than `io.EOF` with HTTP 400 and an immediate return before the response header.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned trimming `request.Name` with `strings.TrimSpace` and rejecting an empty result with HTTP 400, following the existing error-response pattern. Start-time validation follows the name exercise.
+- No Go application code was edited, and no database checks were run by the agent.
+
+Name-validation review and runtime confirmation (2026-10-27):
+
+- The user reported the name-validation exercise works as intended. This is a user-reported runtime result; no live API requests were run by the agent.
+- Inspected `main.go`: `strings` is imported, the decoded name is trimmed after both decode checks, and an empty result produces HTTP 400 with an immediate return before response headers.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned checking `request.StartedAt.IsZero()` after name validation, returning HTTP 400 for a zero start time. Explain the default `time.Time` value and verify valid, missing/null, and malformed timestamps.
+- No Go application code was edited, and no database checks were run by the agent.
+
+Start-time validation review (2026-10-27):
+
+- The user requested review of their solution. Inspected `main.go`: `request.StartedAt.IsZero()` is checked after name validation, with HTTP 400 and an immediate return before writing response headers. The implementation is correct for the assigned exercise.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Runtime verification of valid, missing/null, and malformed timestamps is still pending. Do not treat code review/compilation as a confirmed API runtime result.
+- No Go application code was edited, and no live API requests or database checks were run by the agent.
+
+Input-validation runtime confirmation and transaction scaffold (2026-10-27):
+
+- The user reported the start-time exercise works as intended after the assigned valid/missing/null/malformed timestamp checks. This is a user-reported runtime result; no live API requests were run by the agent.
+- Reinspected the POST handler, both migration schemas, Go dependency version, roadmap, and the installed pgxpool transaction implementation/documentation. Input validation remains present; no transaction is implemented yet.
+- Assigned the small transaction scaffold in **Resume here**: a five-second request context, `pool.Begin(ctx)`, logged HTTP 500 handling on failure, and `defer tx.Rollback(ctx)` after successful begin. Retain the echo response while this empty transaction is practiced. No inserts or commit are assigned yet.
+- Explain that this is the Go equivalent of the earlier BEGIN/ROLLBACK practice, preparing to commit the counter, workout, and change-log event together. pgx requires explicit commit or rollback even when a context is canceled.
+- No application code was edited, and no builds, tests, migrations, or database runtime checks were run for this confirmation. The prior start-time review remains the latest formatting/compilation check.
+
+Transaction-scaffold draft review (2026-10-27):
+
+- Inspected the user's new request context, `pool.Begin(ctx)`, HTTP 500 handling, and deferred rollback. The transaction mechanics and defer order are correct, but the block currently runs before decoding and validation. Move the whole block after the start-time check and before response headers.
+- Explained why validation comes first: invalid bodies should be rejected without acquiring a database connection or depending on PostgreSQL availability. Starting a transaction before reading the body also occupies a connection during body decoding.
+- The begin-error block omits logging; assigned `log.Printf("begin workout transaction: %v", err)` before the HTTP error response.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Left the Go code unchanged for the user to correct. No live API requests, database changes, or transaction runtime checks were run by the agent.
+
+Corrected transaction-scaffold review (2026-10-27):
+
+- Inspected the user's fixes: the timeout/begin/rollback block now runs after all input validation and before response headers. The begin-error block logs `begin workout transaction: %v` before HTTP 500 and an immediate return.
+- The corrected transaction scaffold matches the exercise. Deferred rollback is registered after deferred cancellation, so rollback executes first on return.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned runtime checks for valid-request success, database-outage HTTP 500 with logging, invalid-input HTTP 400 even during the outage, and recovery after PostgreSQL restarts. These results remain pending.
+- No Go application code was edited, and no live API requests or database checks were run by the agent.
+
+Transaction-scaffold runtime confirmation and counter exercise (2026-10-27):
+
+- The user reported the transaction-scaffold exercise works as intended after the assigned success, database-outage, validation-order, and recovery checks. This is a user-reported runtime result; no API calls or database commands were run by the agent.
+- Reinspected the current transaction block, change-log migration, Go dependency version, and installed pgx QueryRow/Scan implementation locations. The scaffold still echoes the request and rolls back without SQL writes.
+- Assigned the counter upsert in **Resume here**, inside `tx` and before any workout data is written. The server-selected `local-dev` owner is passed as `$1`; the returned BIGINT is scanned into an `int64` and failures must be logged with HTTP 500 and an immediate return.
+- Explain `ON CONFLICT` as handling the existing counter row: create with 1 or increment the current value, returning the allocated number. The transaction holds the counter row lock until it ends. Keep deferred rollback and the temporary echo response; no commit is assigned yet, so the stored counter must remain unchanged.
+- No application code was edited and no builds, tests, migrations, or database runtime checks were run for this confirmation. Previous corrected-scaffold formatting/compilation checks remain the latest agent-run checks.
+
+Counter-query draft review (2026-10-27):
+
+- The user asked what is wrong with their query. Inspected the draft against the migration: owner selection, `int64` result, transaction usage, parameter passing, and `Scan(&sequence)` match the assignment.
+- Found three issues: Go double-quoted strings cannot span these lines using backslashes; the returned column must be `last_sequence`, not `last sequence`; and the error block must log the actual error and send HTTP 500, rather than logging `asd` with a status argument and returning an empty response.
+- Provided a corrected query/error-handling example for the user to apply, keeping deferred rollback and no commit at this stage.
+- Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: failed compilation with string-literal/escape syntax errors at the query. No behavioral tests ran, and no SQL was executed against PostgreSQL.
+- No Go application code was edited by the agent. Review the user's fixes, then recheck formatting/compilation and the counter's rollback behavior before proceeding.
+
+Corrected counter-query review (2026-10-27):
+
+- Inspected the user's fixes: the SQL now uses raw-string backticks without line-continuation backslashes, returns `last_sequence`, and runs through the existing transaction with the server-selected owner and `Scan(&sequence)`.
+- The scan-error block now logs the actual error, sends HTTP 500, and returns immediately. The counter allocation matches the assignment and remains covered by deferred rollback.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned runtime verification: inspect the counter before a valid POST, expect HTTP 200 from the echo handler, and inspect the counter again to confirm rollback leaves it unchanged (or absent if it was absent before). These results remain pending.
+- No Go application code was edited, and no live API requests or database checks were run by the agent.
+
+Counter rollback observation and workout-insert exercise (2026-10-27):
+
+- The user reported running the counter SELECT before and after a POST and receiving zero rows both times. This is a user-reported database observation, consistent with the counter insert being rolled back. The POST's HTTP status was not explicitly reported; also confirm HTTP 200 before treating the query's runtime success as established.
+- Reinspected the counter allocation, transaction placement, existing `Workout` struct, and workout migration. PostgreSQL defaults already provide the generated UUID, creation timestamp, and revision 1.
+- Assigned the workout INSERT/RETURNING query in **Resume here**, executed through the same transaction after counter allocation, using the server-selected owner and validated request fields. Scan the returned fields into `Workout`, following the existing GET handler's field order, and log/return HTTP 500 on failure.
+- Keep the temporary echo and deferred rollback. No commit is assigned until the matching change-log event is included. The new workout insert is guidance only and has not been implemented by the agent.
+- No Go application code was edited, and no builds, tests, live API requests, or database checks were run for this confirmation. Previous corrected-counter formatting/compilation checks remain the latest agent-run checks.
+
+Workout-insert review (2026-10-27):
+
+- Inspected the new workout INSERT against the schema and assignment. It runs through `tx` after counter allocation; arguments match `$1`, `$2`, and `$3`; the six scan destinations match RETURNING order; and error handling logs the actual error, sends HTTP 500, and returns.
+- PostgreSQL generates the ID, creation timestamp, and revision using the table defaults. The handler still echoes the request and rolls back the counter and workout writes; the change-log event and commit remain later steps.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned runtime verification of an explicit HTTP 200 response and unchanged workout count/counter before and after the request. These results remain pending; unchanged database contents alone do not prove the request succeeded.
+- No Go application code was edited, and no live API requests or database checks were run by the agent.
+
+Workout rollback confirmation and defer explanation (2026-10-27):
+
+- The user explicitly reported a valid HTTP 200 POST and a workout count of 1 before and after the request. This establishes user-reported success through the counter/workout queries and an unchanged stored workout count. No fresh counter count was reported in this message.
+- The user asked for a timeline because `defer tx.Rollback(ctx)` appears before `tx.QueryRow` in source order. Reinspected the current handler and explained deferred-call registration versus execution, scope of the POST callback, reverse execution order, cleanup on early returns, and the uncommitted writes being discarded at handler exit.
+- The handler currently writes its echo response before rollback; it has no commit. Later, the complete write transaction must commit the counter, workout, and event before a successful creation response.
+- No new coding exercise was assigned during this conceptual explanation. The next implementation milestone remains serializing the workout snapshot and inserting its matching change-log event.
+- No application code was edited, and no builds, tests, live API requests, or database checks were run for this explanation. Previous workout-insert formatting/compilation checks remain the latest agent-run checks.
+
+Defer understanding and payload-serialization exercise (2026-10-27):
+
+- The user confirmed understanding the handler timeline and deferred rollback, then asked to continue.
+- Reinspected the current insert/scan, change-log migration, roadmap, and learning checkpoint. The populated `workout` is ready to serialize; payload serialization, event insertion, and commit are not present yet.
+- Assigned the small `json.Marshal(workout)` exercise in **Resume here**, with logged HTTP 500 handling on failure and a temporary `%s` payload log on success. Logging the payload provides a visible result and avoids leaving a new Go variable unused before the next exercise.
+- Explain that marshal returns JSON bytes and an error; this prepares data for the JSONB event payload. The full stored snapshot includes server-generated fields. Keep the echo response and deferred rollback until the event insert is ready.
+- No application code was edited, and no builds, tests, live API requests, or database checks were run for this instruction checkpoint. Previous workout-insert formatting/compilation checks remain the latest agent-run checks.
+
+Payload-serialization review and event-insert exercise (2026-10-27):
+
+- The user reported the serialization exercise works as intended. Inspected `main.go`: it marshals the populated `workout`, logs/returns HTTP 500 on error, and logs the JSON bytes with `%s` on success.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Reviewed the change-log schema and installed pgx transaction/parameter codecs. Assigned the change-log INSERT in **Resume here**, using `tx.Exec` with the server-selected owner, allocated sequence, inserted workout ID/revision, fixed `workout`/`create` values, and JSON payload. The table default supplies event creation time.
+- Explain that `Exec` returns command details plus an error; there is no row to scan for this statement. Discard the command details with `_` and preserve logged HTTP 500 handling and early return on failure.
+- Keep the temporary echo and deferred rollback until this insert is reviewed. No commit is assigned yet. No Go application code was edited, and no API requests or database commands were run by the agent; serialization runtime success is user-reported.
+
+Change-log INSERT review (2026-10-27):
+
+- Inspected the new INSERT against the schema. It runs through the same transaction after payload serialization; its column/value order, five arguments, fixed entity type/operation, and generated event timestamp match the assignment.
+- The user's `if _, err = tx.Exec(...); err != nil` uses a valid assignment to the existing error variable. It discards the command details, logs execution failures, sends HTTP 500, and returns, allowing deferred rollback to discard all prior writes.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned runtime verification of HTTP 200 and unchanged stored counter, workout count, and event count before and after a request. This remains pending; the event insert has not been independently executed by the agent.
+- No Go application code was edited. The handler still echoes the request and rolls back; the next coding exercise will add commit/error handling and finalize HTTP 201 with the created workout.
+
+Event runtime confirmation and error-variable scope explanation (2026-10-27):
+
+- The user reported the event-insert exercise works as intended, then asked for an explanation of `:=` versus `=` before continuing. Runtime success/rollback is user-reported; no API requests or database commands were run by the agent.
+- Reinspected the actual handler to explain its scope boundaries. Each short declaration in an if initializer creates an if-local error; handler-level `tx, err := ...` declares separate variables; `payload, err := ...` introduces payload and reassigns the existing handler error; the current Exec initializer assigns that handler error with `=`.
+- Clarify that `if _, err := tx.Exec(...); err != nil` would also be valid because its err is new in the if scope, whereas a standalone `_, err := ...` in the handler block has no new nonblank variable. Errors follow the same declaration/assignment rules as other Go values.
+- No application code was edited, and no builds/tests were repeated for this conceptual explanation. The previous change-log INSERT formatting/compilation checks remain the latest agent-run checks. No commit exercise was assigned during this explanation turn.
+
+Scope understanding and commit exercise (2026-10-27):
+
+- The user confirmed understanding `:=`/`=` and asked to continue. Reinspected the handler, roadmap, and installed pgxpool Commit/Rollback documentation. The event Exec now uses a valid if-local short declaration; no commit is present yet.
+- Assigned `tx.Commit(ctx)` after the event error block, with logging/HTTP 500/return on failure before any success response. After successful commit, set JSON content type, write HTTP 201, and encode the inserted `workout` rather than the request.
+- Remove the temporary payload log while retaining deferred rollback and cancellation. Explain that deferred rollback after a successful commit is harmless; it still handles earlier error paths. A response-write failure after commit is logged because the database changes are already committed.
+- This is guidance for the user to implement. No Go application code was edited, and no builds, tests, live API requests, or database checks were run for this instruction checkpoint. The previous change-log INSERT formatting/compilation checks remain the latest agent-run checks.
+- Next, review the implementation, then verify persistent success and transaction failure atomicity before introducing the React creation form.
+
+Commit and HTTP 201 review (2026-10-27):
+
+- Inspected the user's changes: `tx.Commit(ctx)` runs after the event INSERT and before any success response. Its error branch logs the actual error, sends HTTP 500, and returns immediately.
+- After successful commit, the handler sets JSON content type, writes HTTP 201, and encodes `workout`. Deferred rollback/cancellation remain, and the temporary payload log has been removed. The implementation matches the assigned exercise.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Assigned runtime verification of one HTTP 201 response and persistent workout/event/counter changes, including matching event ID/revision/payload and visibility through GET/React. These results remain pending, as does the later intentional failure/rollback exercise.
+- No Go application code was edited, and no live API requests or database commands were run by the agent.
+
+Persistence confirmation and intentional-failure exercise (2026-10-27):
+
+- After asking how to inspect the counter and receiving the psql command, the user reported the persistence exercise works as intended. Record this as user-reported success; no exact new counts or separate detailed event/workout payload comparison were provided.
+- Reinspected the current handler and migration: the event operation is correctly `create`, and the schema's CHECK accepts only create/update/delete. The handler still checks the event error before commit.
+- Assigned the controlled failure exercise in **Resume here**: record baseline state, temporarily use `invalid` as the event operation, restart Go, send valid input, confirm HTTP 500 with a CHECK error and unchanged counter/workout/event state, then restore `create` and verify HTTP 201 recovery.
+- The purpose is to fail after the counter/workout writes and demonstrate that deferred rollback undoes those writes together. Current Go code was left correct and unchanged by the agent; the intentional failure has not been introduced or run yet.
+- No builds/tests were repeated, and no API requests, database commands, or schema changes were run by the agent. Prior commit/HTTP 201 formatting/compilation checks remain the latest agent-run checks.
+
+Failure/recovery confirmation and React input exercise (2026-10-27):
+
+- The user reported the intentional invalid-operation failure/rollback/recovery exercise works as intended. This is user-reported runtime behavior; no API requests or database commands were run by the agent.
+- Inspected the restored handler: the event operation is `create`, followed by commit and the HTTP 201 workout response. Ran `gofmt -l services/api/cmd/server/main.go`: no formatting findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed; there are no test files, so no behavioral test cases ran.
+- Read the existing React component, web scripts, and Vite configuration. `App.tsx` currently contains health checking and the workout list only, with no creation state or inputs.
+- Assigned the controlled name-input exercise in **Resume here**. Form submission is a following step; its initial payload will use the typed name and current ISO timestamp. No React code was edited by the agent, and no web checks/builds or browser tests were run for this instruction checkpoint.
+
 ## Commands for resuming
 
 Run these from the project root in separate terminals.
@@ -499,6 +693,8 @@ vp run build
 - Development proxying, React state, events, and `fetch` in the API button exercise.
 - Ternary expressions, `instanceof Error`, and narrowing a caught value from `unknown` before reading `.message`.
 - Go environment variables, empty-string checks, multiple return values, `context.WithTimeout`, its returned cancellation function, pool creation, `Ping`, and explicit resource cleanup.
+- Deferred cleanup: `defer` registers a call at that point and executes it when the enclosing handler returns; multiple deferred calls run in reverse order. Transactional inserts can succeed and return fields while remaining uncommitted, then be discarded by rollback.
+- Short variable declarations and assignment: `:=` requires at least one new nonblank name in the current block and can reassign other names from that block; `=` updates existing variables. An if initializer has its own scope, so its local `err` may shadow a handler-level `err`.
 
 ## Later milestones
 

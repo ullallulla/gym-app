@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,6 +20,11 @@ type Workout struct {
 	StartedAt time.Time `json:"started_at"`
 	CreatedAt time.Time `json:"created_at"`
 	Revision  int64     `json:"revision"`
+}
+
+type CreateWorkoutRequest struct {
+	Name      string    `json:"name"`
+	StartedAt time.Time `json:"started_at"`
 }
 
 func main() {
@@ -105,6 +112,120 @@ func main() {
 
 		if err := json.NewEncoder(w).Encode(workouts); err != nil {
 			log.Printf("failed to write workouts response: %v", err)
+		}
+	})
+
+	mux.HandleFunc("POST /api/workouts", func(w http.ResponseWriter, r *http.Request) {
+		var request CreateWorkoutRequest
+		var extra any
+
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024*1024))
+		decoder.DisallowUnknownFields()
+
+		if err := decoder.Decode(&request); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(w, "Request body must contain a single JSON value", http.StatusBadRequest)
+			return
+		}
+
+		request.Name = strings.TrimSpace(request.Name)
+
+		if request.Name == "" {
+			http.Error(w, "Workout name is required", http.StatusBadRequest)
+			return
+		}
+
+		if request.StartedAt.IsZero() {
+			http.Error(w, "Workout start time is required", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		tx, err := pool.Begin(ctx)
+
+		if err != nil {
+			log.Printf("begin workout transaction: %v", err)
+			http.Error(w, "Could not create workout", http.StatusInternalServerError)
+			return
+		}
+
+		defer tx.Rollback(ctx)
+
+		userID := "local-dev"
+		var sequence int64
+
+		query := `INSERT INTO user_change_counters (user_id, last_sequence)
+		VALUES ($1, 1)
+		ON CONFLICT (user_id)
+		DO UPDATE SET last_sequence = user_change_counters.last_sequence + 1
+		RETURNING last_sequence`
+
+		if err := tx.QueryRow(ctx, query, userID).Scan(&sequence); err != nil {
+			log.Printf("allocate workout change sequence: %v", err)
+			http.Error(w, "Could not create workout", http.StatusInternalServerError)
+			return
+		}
+
+		var workout Workout
+		workoutQuery := `INSERT INTO workouts (user_id, name, started_at)
+		VALUES ($1, $2, $3)
+		RETURNING id::text, user_id, name, started_at, created_at, revision`
+
+		if err := tx.QueryRow(ctx, workoutQuery, userID, request.Name, request.StartedAt).Scan(
+			&workout.ID,
+			&workout.UserID,
+			&workout.Name,
+			&workout.StartedAt,
+			&workout.CreatedAt,
+			&workout.Revision,
+		); err != nil {
+			log.Printf("allocate workout: %v", err)
+			http.Error(w, "Could not create a workout", http.StatusInternalServerError)
+			return
+		}
+
+		payload, err := json.Marshal(workout)
+		if err != nil {
+			log.Printf("serialize workout: %v", err)
+			http.Error(w, "Could not create a workout", http.StatusInternalServerError)
+			return
+		}
+
+		changeQuery := `INSERT INTO change_log
+		(user_id, sequence, entity_type, entity_id, operation, revision, payload)
+		VALUES ($1, $2, 'workout', $3, 'create', $4, $5)`
+
+		if _, err := tx.Exec(
+			ctx,
+			changeQuery,
+			userID,
+			sequence,
+			workout.ID,
+			workout.Revision,
+			payload,
+		); err != nil {
+			log.Printf("inserting change log event: %v", err)
+			http.Error(w, "Could not add change log event", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			log.Printf("commit database changes: %v", err)
+			http.Error(w, "Could not commit database changes", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+
+		if err := json.NewEncoder(w).Encode(workout); err != nil {
+			log.Printf("failed to write workout request response: %v", err)
 		}
 	})
 
