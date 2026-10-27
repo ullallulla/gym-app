@@ -1,6 +1,38 @@
 # Learning log
 
-Last checkpoint: 2026-10-26.
+Last checkpoint: 2026-10-27.
+
+## Resume here
+
+Session resumed on 2026-10-27. **The `CreateWorkoutRequest` exercise has not been started.** The current assignment is that small Go exercise; review the user's attempt once they have added it.
+
+Working at this checkpoint:
+
+- PostgreSQL 18 runs through the root `compose.yaml`, with a persistent named volume.
+- Go connects using `DATABASE_URL`, and `GET /api/workouts` reads the fixed `local-dev` owner's workouts into typed structs and returns JSON.
+- React's Load workouts button displays the stored `Push day` sample. The user reported the read flow working, including API database-outage/recovery checks.
+- Goose migration 1 creates `workouts`; migration 2 creates `user_change_counters` and `change_log`. The user reported applying and inspecting both successfully. The agent reviewed SQL and ran Goose file validation, but did not execute migrations or inspect the live database.
+- Transaction practice demonstrated that an inserted row is visible inside its transaction and disappears after `ROLLBACK` (user-reported).
+
+Exact next exercise:
+
+1. In `services/api/cmd/server/main.go`, after `Workout` and before `main`, define a package-level `CreateWorkoutRequest` struct.
+2. Add `Name string` with JSON tag `json:"name"` and `StartedAt time.Time` with JSON tag `json:"started_at"`.
+3. Review the user's attempt. The client supplies these two values; the server assigns ID, owner, creation time, and revision.
+
+Ideas for the following steps, to introduce one at a time:
+
+1. Add a POST handler that decodes and validates one JSON request. Handle an invalid body, unknown fields, a blank/whitespace-only name, and a missing start time before database work. Keep the request body bounded.
+2. Use a request timeout and a pgx transaction. Initialize/increment the server-selected owner's counter inside the transaction, acquiring its row lock before writing workout data. Allocate change numbers transactionally; a PostgreSQL sequence alone does not establish commit ordering.
+3. Insert the workout and read its generated fields, serialize that snapshot into the change-log payload, insert the matching `create` event, and commit together. Roll back on failure and return HTTP 201 only after commit succeeds.
+4. Verify that a successful request creates the workout/event and advances the counter, while a failed transaction leaves all three unchanged. Ownership stays server-controlled (`local-dev` during this learning phase).
+5. Add a small React creation form and reload the workout list after a successful POST. Authentication, mobile synchronization, and other roadmap features remain later work in `PLAN.md`.
+
+Latest checks actually run: Go formatting and compilation passed during the read-handler review; `vp check src/App.tsx` and `vp run build` passed after fixing the React catch block; Goose file validation passed after fixing migration 2. There are no automated test files yet. The full web formatting check previously flagged three unchanged files outside `App.tsx`; these were not corrected or rechecked. No tests were run for this save-only checkpoint.
+
+Tooling: the user's login shell is Fish. Global Vite+ is installed; the agent's Bash shell can source `/home/allu/.config/vite-plus/env` when needed. Goose v3.29.0 is installed at `/home/allu/go/bin/goose`. If a fresh Fish terminal cannot find it, the proposed persistent fix is `fish_add_path --universal /home/allu/go/bin`; persistence has not been separately confirmed by the user.
+
+Restart commands are in **Commands for resuming** below. Start PostgreSQL first and set `DATABASE_URL` again in a new terminal. At shutdown, `docs/learning.md` is modified and migration 2 is saved locally but still untracked in Git. No Git commit was made by the agent.
 
 ## How we are working
 
@@ -28,6 +60,7 @@ Last checkpoint: 2026-10-26.
 - Defined the Go `Workout` struct with exported fields and JSON tags matching the database model. Code review, formatting, and Go compilation passed.
 - Implemented `GET /api/workouts` with a request timeout, an owner-filtered PostgreSQL query, row scanning, and JSON output. The user confirmed empty/populated results, HTTP 500 during a database outage while Go remains running, and successful recovery with the stored workout preserved.
 - Added a React workout list with a typed response, separate loading/status state, manual fetching, and keyed rendering. The user reported it working; the corrected component passed formatting/lint and the production build.
+- Practiced SQL rollback and added the per-user counter/change-log migration. The user confirmed the rollback exercise and reported applying and inspecting the second migration successfully.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
@@ -336,16 +369,98 @@ Corrected React workout-list review (2026-10-26):
 
 ## Current exercise: prepare workout creation
 
-Status: not started. The next milestone is a React form that creates a workout through `POST /api/workouts`.
+Status: resumed with the `CreateWorkoutRequest` exercise assigned; implementation is pending. The user confirmed applying the second migration and inspecting both tables successfully. The creation request type, POST handler, transaction, and form remain unimplemented.
 
 - Follow `PLAN.md` before adding API writes: introduce a transactional per-user change log and ensure the workout insert and its change record commit together.
 - Keep ownership server-controlled. The local development owner may be fixed until Clerk is introduced; do not derive ownership from a caller-supplied `user_id`.
 - Use a new migration for the change log, preserving the already-applied workout migration. Introduce the transaction and schema concepts in a small exercise before implementing the write handler and form.
-- No creation form, write handler, change-log migration, or corresponding runtime checks have been implemented yet.
+- No creation form or write handler has been implemented. The corrected second migration defines both tables, and the user reported applying and inspecting them successfully. The agent has not run database commands to verify them independently.
+
+Transaction introduction (2026-10-26):
+
+- Resumed by inspecting the current workout schema, Go dependencies, migration files, and roadmap. No source changes or pending migrations were found beyond the existing workout schema.
+- Explained that creating a workout will save both its row and a change-log row in one all-or-nothing transaction. Introduce this behavior before adding the new schema and Go write code.
+- Assigned a short manual psql exercise in one session: count `local-dev` workouts, `BEGIN`, insert a `Transaction practice` workout, count again, `ROLLBACK`, then count once more. Expected counts are N, N+1, N.
+- The user should open psql with `sudo docker compose exec db psql -U gym_app -d gym_app`. The practice insert supplies `user_id`, `name`, and `started_at` and relies on the existing defaults for the remaining fields.
+- `BEGIN` starts the transaction, `ROLLBACK` discards its changes, and `COMMIT` would save them. No manual practice insert or database transaction was run by the agent.
+- Next, review the user's rollback result, then design the change-log migration and implement the two writes in a Go transaction. When designing future download cursors, account for concurrent transactions: sequence allocation alone does not provide commit ordering; a transactionally locked per-user counter is a suitable design to examine.
+- No application files or schema were changed and no builds/tests were run for this instruction checkpoint.
+
+Rollback confirmation and counter-table exercise (2026-10-26):
+
+- The user reported that the transaction practice worked. Record the expected count behavior as user-confirmed: the insert was visible inside the transaction and disappeared after rollback. No transaction was executed by the agent.
+- Inspected the migration directory: only `00001_create_workouts.sql` exists. The next file should be generated with `goose -dir services/api/migrations -s create create_change_log sql`, producing `00002_create_change_log.sql`.
+- The planned migration will create two tables: `user_change_counters` to allocate a user's next change number transactionally, and `change_log` to store the change events. This supports future per-user download cursors without relying on a PostgreSQL sequence's allocation order as commit order.
+- Current assignment: under Up, define `user_change_counters` with `user_id TEXT PRIMARY KEY` and `last_sequence BIGINT NOT NULL DEFAULT 0 CHECK (last_sequence >= 0)`. Under Down, add `DROP TABLE user_change_counters;`.
+- Explain that zero means the user has no logged changes yet. The Go write transaction will update and lock that user's counter row before allocating the change number and writing the workout/event; rollback will undo the counter update too.
+- Next, review the counter definition and add the actual change-log table to the same migration before applying it. The event table should have a composite `(user_id, sequence)` primary key, retain identifiers for deleted entities, and hold the data required by future synchronization. Work through its fields and constraints in the next small exercise.
+- No migration file, counter, log table, or Go code was created or changed by the agent, and no new checks or database commands were run during this checkpoint.
+
+Counter-table draft review (2026-10-26):
+
+- Inspected `00002_create_change_log.sql`: the counter columns, primary key, default zero, nonnegative check, and Goose Up/Down sections match the assigned exercise.
+- Found a missing comma after `user_id TEXT PRIMARY KEY` on line 3. Add it to separate the two column declarations. The final column correctly needs no trailing comma.
+- Ran `/home/allu/go/bin/goose -dir services/api/migrations validate`: passed Goose file validation. The SQL has not been executed or validated by PostgreSQL, and the missing comma remains a SQL syntax error.
+- Left the SQL unchanged for the user to fix. Then review the correction and add the actual `change_log` table to the same migration before applying it. No database schema changes were made by the agent.
+
+Counter correction and event-table exercise (2026-10-26):
+
+- Inspected the updated counter definition: the column separator is present and the SQL looks correct. Reran `/home/allu/go/bin/goose -dir services/api/migrations validate`: passed. PostgreSQL execution remains pending; no schema was applied by the agent.
+- Assigned adding `CREATE TABLE change_log` after the counter table in the Up section, using eight columns: `user_id TEXT NOT NULL REFERENCES user_change_counters(user_id)`, `sequence BIGINT NOT NULL CHECK (sequence > 0)`, `entity_type TEXT NOT NULL`, `entity_id UUID NOT NULL`, `operation TEXT NOT NULL CHECK (operation IN ('create', 'update', 'delete'))`, `revision BIGINT NOT NULL CHECK (revision > 0)`, `payload JSONB NOT NULL CHECK (jsonb_typeof(payload) = 'object')`, and `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+- Add the table-level `PRIMARY KEY (user_id, sequence)`. Explain that the pair is unique, so separate users may each have sequence 1, but one user cannot have two events with sequence 1. The foreign key requires a counter row for each logged user.
+- `payload` stores the event's JSON object. Creation/update events will carry the workout snapshot. A future deletion event can carry a minimal object with its ID and revision; `operation` identifies it as a deletion. Keep `entity_id` independent of a workout foreign key so events can remain after the workout is removed.
+- Update Down to drop `change_log` before `user_change_counters` because the event table references the counter table. Preserve both creation statements in Up and both corresponding drops in Down.
+- The future Go write transaction must allocate a per-user change number by updating/locking the counter before writing the workout and log entry, with all steps committed or rolled back together. Creating these tables alone does not enforce this write protocol.
+- No migration file was edited or applied by the agent. Next, review the user's complete migration and validate its constraints/schema before applying it.
+
+Complete migration draft review (2026-10-26):
+
+- Inspected both table definitions. Their columns, defaults, checks, composite primary key, and counter foreign key match the exercise apart from the syntax issue below.
+- Found `operation TEXT NO NULL` on line 12; change it to `operation TEXT NOT NULL` while retaining its allowed-operation check.
+- Found the Down section drops the parent counter table before its referencing child. Reverse the order: `DROP TABLE change_log;` followed by `DROP TABLE user_change_counters;`.
+- The final `DROP TABLE change_log` also lacks a semicolon. Ran `/home/allu/go/bin/goose -dir services/api/migrations validate`: failed with an unfinished SQL query/missing-semicolon error in Down.
+- Left the migration unchanged for the user to fix. No schema was applied or checked by PostgreSQL. Next, review these fixes and rerun file validation before applying/testing the schema.
+
+Migration correction review (2026-10-26):
+
+- Reinspected the file: `operation` now uses `NOT NULL`, and Down correctly lists `change_log` before `user_change_counters`.
+- One issue remains on line 21: `DROP TABLE change_log` needs its own terminating semicolon. A newline alone does not separate the two SQL statements.
+- Reran `/home/allu/go/bin/goose -dir services/api/migrations validate`: passed. Goose accepts the semicolon-terminated combined text, but PostgreSQL will reject the two DROP commands without a separator. This remains file-format validation rather than PostgreSQL SQL validation.
+- Left the migration unchanged for the user to add the semicolon. No migration or database checks were executed against PostgreSQL.
+
+Second migration ready for application (2026-10-26):
+
+- Reinspected the full file: both Down statements now have semicolons and are in the correct dependency order. Both Up table definitions, their checks, the composite primary key, and the counter foreign key look correct for the assigned schema.
+- Reran `/home/allu/go/bin/goose -dir services/api/migrations validate`: passed. This still does not establish that PostgreSQL has executed the schema or rollback successfully.
+- Next, with PostgreSQL running and `DATABASE_URL` exported, the user should run `goose -dir services/api/migrations postgres "$DATABASE_URL" up` from the project root.
+- Inspect both tables through the container's psql using `\d user_change_counters` and `\d change_log`. Await the application and inspection results before moving on to Go transaction implementation.
+- No SQL file, database schema, or application code was changed by the agent during this review.
+
+Second migration application and request-type exercise (2026-10-26):
+
+- The user reported the migration application and table inspection working. This is a user-reported PostgreSQL result; no migration or live schema inspection was run by the agent.
+- Reinspected `main.go`: it still has the existing Workout response type and GET handlers; no POST handler or creation request type is present.
+- Assigned a package-level `CreateWorkoutRequest` struct above `main`, using `Name string` with JSON name `name` and `StartedAt time.Time` with JSON name `started_at`.
+- Explain the request/response distinction: the client supplies the workout's name and start time; the server assigns its ID, owner, creation time, and initial revision. The request type deliberately exposes the two client-provided fields.
+- Next, review the request type, then introduce decoding and validation of the POST body before database work. Check a bounded body, unknown fields, a single JSON object, a trimmed nonempty name, and a nonzero start time when implementing the full input handler.
+- Keep the write transaction protocol from the preceding notes: allocate the per-user counter under a transaction lock, create the workout and log snapshot, and commit together. Input parsing is the current small exercise; no creation code was implemented by the agent.
+- No application code or database data was changed, and no builds/tests were run for this instruction checkpoint.
+
+Session resumed (2026-10-27):
+
+- Read the learning checkpoint, roadmap, repository instructions, web scripts/configuration, and current `main.go`. Confirmed by code inspection that `CreateWorkoutRequest` and the POST handler are still absent.
+- Reassigned the package-level request-type exercise described above. No application code was edited and no new runtime results were reported by the user.
+- Ran the required `vp install`: passed with dependencies already up to date. No builds, tests, migrations, or live database checks were run for this instruction checkpoint.
 
 ## Commands for resuming
 
 Run these from the project root in separate terminals.
+
+PostgreSQL (start this first):
+
+```bash
+sudo docker compose up --wait
+```
 
 Go API:
 
