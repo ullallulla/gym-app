@@ -4,13 +4,14 @@ Last checkpoint: 2026-10-27.
 
 ## Resume here
 
-Session resumed on 2026-10-27. **The Go creation flow's persistence, intentional late failure/rollback, and recovery exercises are user-confirmed.** The correct `create` operation is restored and inspected; formatting and compilation pass. Next, start the React creation form with a controlled workout-name input in `App.tsx`, then introduce submission in a following exercise.
+The user stopped on 2026-10-27 after confirming the browser creation/error/recovery checks work as intended. **The first end-to-end workout creation flow is complete. No new exercise has been started.** Resume after this milestone; do not reassign the request type, transaction, or React creation-form exercises.
 
 Working at this checkpoint:
 
 - PostgreSQL 18 runs through the root `compose.yaml`, with a persistent named volume.
 - Go connects using `DATABASE_URL`, and `GET /api/workouts` reads the fixed `local-dev` owner's workouts into typed structs and returns JSON.
 - React's Load workouts button displays the stored `Push day` sample. The user reported the read flow working, including API database-outage/recovery checks.
+- React has the correct POST payload/success path, form submission, creation-error state, pending guard/set/finally reset, status display, and input/button disabled conditions. Successful creation clears the input and reloads the list. The user confirmed browser creation, visible errors with the entered name preserved during a database outage, and successful retry after PostgreSQL recovery. These are user-reported results; the agent inspected the code and ran component/build checks, not browser tests.
 - Goose migration 1 creates `workouts`; migration 2 creates `user_change_counters` and `change_log`. The user reported applying and inspecting both successfully. The agent reviewed SQL and ran Goose file validation, but did not execute migrations or inspect the live database.
 - Transaction practice demonstrated that an inserted row is visible inside its transaction and disappears after `ROLLBACK` (user-reported).
 - `POST /api/workouts` decodes a bounded 1 MiB request, rejects decoder errors/unknown fields and extra JSON values, trims/requires a name, and requires a nonzero start time. The user confirmed these input-validation exercises before commit was introduced.
@@ -19,27 +20,19 @@ Working at this checkpoint:
 - `tx.Commit(ctx)` runs after the event INSERT and before success headers/body. Commit errors are logged and return HTTP 500 immediately. On success, POST sets JSON content type, writes HTTP 201, and encodes the inserted `workout`. Deferred rollback/cancellation are retained; the temporary payload log is removed. Review and formatting/compilation pass. The user reports the commit/persistence exercise works as intended after checking the counter; no exact new counts or separate ID/revision/payload comparison were reported.
 - The earlier rollback exercises were user-confirmed: a valid HTTP 200 POST left the workout count at 1 before and after, the counter was observed absent before/after an earlier request, and the payload/event-insert exercises reportedly worked as intended. The later commit/persistence and intentional invalid-operation failure/rollback/recovery exercises are also user-confirmed. The agent confirmed `create` is restored by inspecting the source. No POST runtime or database checks were independently run by the agent, and a detailed event/workout payload comparison has not been separately reported.
 
-Exact next exercise:
+Starting point for the next session:
 
-1. In `apps/web/src/App.tsx`, inside `App` beside the existing state declarations, add `const [workoutName, setWorkoutName] = useState("")`.
-2. Render an accessible label and text input: label `htmlFor="workout-name"`, input `id="workout-name"`, `value={workoutName}`, and `onChange={(event) => setWorkoutName(event.target.value)}`.
-3. Explain the controlled-input loop: React state supplies the displayed value, and typing calls the setter to update that state. Keep the existing API/list UI. No POST submission is assigned in this first UI exercise.
-4. Review the user's input implementation and run appropriate Vite+ checks/build after changes. The next exercise will add a form submission handler, creation status, and pending state.
-5. For the first submission version, send the typed name and `started_at: new Date().toISOString()` to POST /api/workouts, using the submission time as the workout start. Add a user-selected start time later if needed. On success clear the field and reload workouts, while preserving clear creation/list error states.
+1. Read this checkpoint and `PLAN.md`, inspect Git status, and give a brief recap that workout creation is complete. Startup commands are in **Commands for resuming** below.
+2. No next feature or coding exercise was assigned before the user left. A suggested small Go-focused continuation is extracting `GET /api/health` from its anonymous callback into a named handler, preserving its behavior. This can introduce organizing handlers before more endpoints and meaningful Go tests. It is a suggestion, not an accepted or started refactor; follow the user's direction if they choose another roadmap step.
+3. If taking that continuation, start with the named health-handler function and registration only, then review the user's attempt and verify formatting/compilation/health behavior. Keep later resource-handler extraction and tests as separate exercises.
+4. Preserve the working transaction protocol and server-controlled `local-dev` ownership. Authentication, richer workout logging, routing/query tooling, mobile synchronization, and backups remain later work in `PLAN.md`.
+5. Known follow-ups: three unchanged web formatting findings remain outside App.tsx; there are still no automated test files; a detailed event/workout ID/revision/payload comparison was not separately reported. These do not reopen the completed manual creation exercises.
 
-Ideas for the following steps, to introduce one at a time:
-
-1. Review the controlled workout-name input, then add form submission to the existing POST endpoint.
-2. Track creation status/pending state, prevent duplicate clicks while pending, and clear/reload the list after a successful creation.
-3. Verify browser success, API/database failure, and recovery. Inspect event/workout ID, revision, and payload alignment if not already checked.
-4. Preserve server-controlled `local-dev` ownership during this phase; authentication remains later roadmap work.
-5. Authentication, mobile synchronization, and other roadmap features remain later work in `PLAN.md`.
-
-Latest checks actually run: Go formatting and `go test ./...` passed after confirming restoration of the valid event operation on 2026-10-27. There are no Go test files, so this verifies compilation rather than runtime behavior. The earlier counter-draft compilation failure is resolved. `vp install` passed at session start. Previous web checks (`vp check src/App.tsx` and `vp run build`) and Goose file validation passed on 2026-10-26. The full web formatting check previously flagged three unchanged files outside `App.tsx`; these were not corrected or rechecked. No live API or database checks have been run by the agent for the POST exercises.
+Latest checks actually run (2026-10-27): `vp run build` passed after the final submit-button correction. `vp check src/App.tsx` initially failed formatting of the new button; ran `vp check --fix src/App.tsx`, which passed formatting/lint with no warnings/errors and changed only button layout/indentation. The build preceded that formatting-only change and was not repeated. The earlier TS6133 failures are resolved. The three previously known unchanged formatting findings were not rechecked. `vp test` previously exited 1 because no test files exist; it was not repeated. Go formatting/compilation previously passed after restoring the valid event operation. `vp install` passed at session start. No browser/API/database checks were independently run by the agent.
 
 Tooling: the user's login shell is Fish. Global Vite+ is installed; the agent's Bash shell can source `/home/allu/.config/vite-plus/env` when needed. Goose v3.29.0 is installed at `/home/allu/go/bin/goose`. If a fresh Fish terminal cannot find it, the proposed persistent fix is `fish_add_path --universal /home/allu/go/bin`; persistence has not been separately confirmed by the user.
 
-Restart commands are in **Commands for resuming** below. Start PostgreSQL first and set `DATABASE_URL` again in a new terminal. Current local edits include `docs/learning.md` and `services/api/cmd/server/main.go`; migration 2 is now tracked. No Git commit was made by the agent.
+Restart commands are in **Commands for resuming** below. Start PostgreSQL first and set `DATABASE_URL` again in a new terminal. At this stopping checkpoint, `apps/web/src/App.tsx` and `docs/learning.md` are modified and uncommitted; the Go server and migrations are tracked with no current changes. No Git commit was made by the agent. All work is saved on disk; no processes or containers were stopped by the agent.
 
 ## How we are working
 
@@ -47,6 +40,7 @@ Restart commands are in **Commands for resuming** below. Start PostgreSQL first 
 - Use small exercises with a concrete result. Explain the relevant concept, let the user attempt the code, review it, and verify the behavior together.
 - Give hints and explanations, and provide complete examples when requested. Honor explicit requests to implement changes.
 - `PLAN.md` contains the architecture and feature roadmap. This file records exercises, progress, and the next step.
+- Detailed entries below are chronological; older pending items are superseded by **Resume here** and the latest checkpoint.
 
 ## Completed so far
 
@@ -69,6 +63,8 @@ Restart commands are in **Commands for resuming** below. Start PostgreSQL first 
 - Added a React workout list with a typed response, separate loading/status state, manual fetching, and keyed rendering. The user reported it working; the corrected component passed formatting/lint and the production build.
 - Practiced SQL rollback and added the per-user counter/change-log migration. The user confirmed the rollback exercise and reported applying and inspecting the second migration successfully.
 - Implemented the bounded/validated Go workout-creation endpoint with transactional counter allocation, workout insertion, a JSON snapshot event, commit/error handling, and HTTP 201. The user confirmed persistence, intentional late failure with unchanged stored state, and recovery. The agent reviewed the code and checked formatting/compilation; no independent runtime/database tests were run.
+- Added a controlled React workout-name input. The user confirmed state updates using console.log; the reviewed component passes formatting/lint and the web production build.
+- Completed the React creation form with POST, success/error status, pending controls, input clearing, and list reload. Code review, component formatting/lint, and production build pass. The user confirmed browser success, database-outage errors with the entered name preserved, and recovery/retry.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
@@ -375,9 +371,9 @@ Corrected React workout-list review (2026-10-26):
 - Did not repeat `vp test`: no test files were added since its earlier no-tests result. The three previously noted formatting findings outside `App.tsx` were not rechecked or modified.
 - No React code was edited or browser checks run by the agent. The user reported working behavior after the fix; specific browser outage/recovery observations remain unreported.
 
-## Current exercise: add workout creation in React
+## Completed exercise: transactional workout creation and React form
 
-Status: The full local-development POST implementation is reviewed with formatting/compilation passing. The user reports persistence, intentional late failure/rollback, and recovery work as intended. The valid `create` operation is restored and inspected. Deferred execution and error-variable scope are understood. A controlled React workout-name input is assigned but unimplemented; form submission follows its review. The user previously confirmed applying the second migration and inspecting both tables successfully.
+Status: complete for this local-development learning milestone. The Go POST implementation is reviewed with formatting/compilation passing and user-confirmed persistence/failure/recovery. React submission is implemented and reviewed, with build and component formatting/lint passing and browser creation/error/recovery user-confirmed. Deferred execution and error-variable scope are understood. No next exercise has been started.
 
 - Follow `PLAN.md`: keep workout writes and their change-log records in the same transaction, allocating the owner's counter before writing workout data.
 - Keep ownership server-controlled. The local development owner may be fixed until Clerk is introduced; do not derive ownership from a caller-supplied `user_id`.
@@ -646,9 +642,53 @@ Failure/recovery confirmation and React input exercise (2026-10-27):
 - Read the existing React component, web scripts, and Vite configuration. `App.tsx` currently contains health checking and the workout list only, with no creation state or inputs.
 - Assigned the controlled name-input exercise in **Resume here**. Form submission is a following step; its initial payload will use the typed name and current ISO timestamp. No React code was edited by the agent, and no web checks/builds or browser tests were run for this instruction checkpoint.
 
+Controlled-input confirmation and submission exercise (2026-10-27):
+
+- The user reported `workoutName` state changes work and were checked using console.log. Inspected `App.tsx`: the state, setter, label/input association, value, and onChange are correct. No debug log remains in the inspected component.
+- Ran `vp check` from `apps/web`: failed formatting in four files, including an extra blank line in App.tsx and the three previously known unchanged files. Ran `vp check --fix src/App.tsx`: formatting and lint passed with no warnings/errors. The formatter removed only the extra blank line; no functional React code was changed by the agent.
+- Ran `vp run build`: TypeScript and production bundling passed. Ran `vp test`: exited 1 with no test files, so no behavioral test cases ran. The build preceded the whitespace-only formatting correction and was not repeated.
+- Assigned the submission exercise in **Resume here**: POST the current name/start time, track creation status/pending state, handle response/errors, clear/reload after success, and connect a real form submission with default navigation prevented.
+- No form submission code was implemented, and no browser/API/database verification was performed by the agent. The user owns the next implementation attempt.
+
+React submission draft review (2026-10-27):
+
+- Inspected the user's new creation handler and form. POST options, JSON body/current ISO timestamp, HTTP status check, typed response parsing, input clearing, success message assignment, and list reload are correct. The form prevents navigation and invokes the async handler; the label/input association remains valid across the form boundary.
+- Found that the creation catch calls `setWorkoutStatus` instead of `setCreateStatus`; `createStatus` is never rendered; `isCreating` is never read or set; there is no finally reset or duplicate/blank-submit guard; and controls are not disabled. Left functional React code unchanged for the user to fix.
+- Ran `vp run build`: failed TypeScript TS6133 for unused `createStatus`, `isCreating`, and `setIsCreating`. Ran `vp check`: failed formatting in App.tsx and the same three unchanged files. Ran `vp check --no-fmt src/App.tsx`: zero errors, three unused-variable warnings.
+- Did not repeat `vp test`: no test files have been added since the previous no-tests result. No browser/API/database tests were run, and submission success has not been reported by the user yet.
+- Assigned the specific corrections and targeted formatting command in **Resume here** before retrying the build and browser checks.
+
+React creation-state correction review (2026-10-27):
+
+- Inspected the user's fixes: the creation catch now updates `createStatus`, the handler guards pending/blank submissions, pending state is set before fetching and reset in finally, creation status is rendered, and the name input is disabled while pending.
+- One remaining UI omission: the submit button has type submit but no disabled condition. Assigned `disabled={isCreating || workoutName.trim() === ""}`. The handler already ignores pending/blank submissions, so this aligns the button with the existing behavior.
+- Ran `vp run build`: TypeScript and production bundling passed. Ran `vp check src/App.tsx`: failed formatting. Ran `vp check --no-fmt src/App.tsx`: no warnings/errors. Ran `vp check --fix src/App.tsx`: formatting and lint passed, with only formatting changes made by the agent.
+- Did not repeat the successful build after the formatting-only correction or rerun the test runner with no test files. The three prior formatting findings outside App.tsx were not modified or rechecked.
+- Browser creation/error/recovery behavior remains unreported and was not tested by the agent. No functional code or API/database state was changed by the agent.
+
+Final React creation-form code review (2026-10-27):
+
+- Inspected the user's final submit-button change: it now disables for `isCreating` or an empty trimmed name. Input disabling, the handler guard, creation status/error handling, finally reset, success clearing/list reload, and default-navigation prevention are all present and correct for this exercise.
+- Ran `vp run build`: TypeScript and production bundling passed. Ran `vp check src/App.tsx`: failed formatting of the new button. Ran `vp check --fix src/App.tsx`: formatting and lint passed with no warnings/errors; only JSX layout/indentation was changed by the agent.
+- Did not repeat the successful build after the whitespace-only formatting correction or rerun the test runner with no test files. The existing three formatting findings elsewhere were left alone.
+- All requested form-code corrections are complete. Browser creation/error/recovery tests have not been reported by the user or run by the agent yet; those are the next checkpoint.
+
+Session stopping checkpoint (2026-10-27):
+
+- The user reported that the final browser creation/error/recovery checks work as intended and asked to save progress before leaving. Mark the end-to-end creation milestone complete on that user-reported basis; the agent did not independently execute browser/API/database checks.
+- Read the roadmap and checkpoint, inspected the current form/transaction markers, restart configuration, and Git status. Current uncommitted files are App.tsx and this learning log. Application code was not changed for this save-only checkpoint, and no Git commit or service shutdown was performed.
+- Saved the exact resume boundary: the completed creation exercises should not be reassigned. A named Go health-handler extraction is a suggested, unstarted continuation; no new feature/refactor has been accepted or implemented.
+- No builds or tests were repeated. The latest successful web build/component formatting/lint and Go formatting/compilation results remain those recorded above; no automated test cases exist.
+
 ## Commands for resuming
 
 Run these from the project root in separate terminals.
+
+Refresh dependencies at session start, following AGENTS.md:
+
+```bash
+vp install
+```
 
 PostgreSQL (start this first):
 
@@ -656,12 +696,14 @@ PostgreSQL (start this first):
 sudo docker compose up --wait
 ```
 
-Go API:
+Go API (the user's Fish shell):
 
-```bash
-export DATABASE_URL='postgres://gym_app:gym_app_dev@127.0.0.1:5432/gym_app?sslmode=disable'
+```fish
+set -gx DATABASE_URL 'postgres://gym_app:gym_app_dev@127.0.0.1:5432/gym_app?sslmode=disable'
 go -C services/api run ./cmd/server
 ```
+
+In Bash, use `export DATABASE_URL='postgres://gym_app:gym_app_dev@127.0.0.1:5432/gym_app?sslmode=disable'` instead of the Fish `set` line.
 
 React website:
 
@@ -695,7 +737,8 @@ vp run build
 - Go environment variables, empty-string checks, multiple return values, `context.WithTimeout`, its returned cancellation function, pool creation, `Ping`, and explicit resource cleanup.
 - Deferred cleanup: `defer` registers a call at that point and executes it when the enclosing handler returns; multiple deferred calls run in reverse order. Transactional inserts can succeed and return fields while remaining uncommitted, then be discarded by rollback.
 - Short variable declarations and assignment: `:=` requires at least one new nonblank name in the current block and can reassign other names from that block; `=` updates existing variables. An if initializer has its own scope, so its local `err` may shadow a handler-level `err`.
+- Controlled React forms, preventing default submission navigation, JSON POST bodies, ISO timestamps, separate creation/list statuses, pending guards/disabled controls, and resetting pending state in `finally`.
 
 ## Later milestones
 
-After displaying workouts in React, build the first persistent workout write flow, including the transactional change log and trusted ownership handling required by `PLAN.md` before exposing writes. Clerk, TanStack Router/Query, dashboards, food logging, Expo/SQLite synchronization, and encrypted S3 backups remain future work.
+The first persistent workout creation flow is complete, including the transactional change log and server-controlled development owner. Continue with small Go exercises and the next selected roadmap feature. Richer workout logging, Clerk, TanStack Router/Query, dashboards, food logging, Expo/SQLite synchronization, and encrypted S3 backups remain future work in `PLAN.md`.
