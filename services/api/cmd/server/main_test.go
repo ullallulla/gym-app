@@ -37,48 +37,69 @@ func TestHealthHandler(t *testing.T) {
 	}
 }
 
-func TestCreateWorkoutRejectsBlankName(t *testing.T) {
-	app := &application{}
-
-	body := `{"name":"   ","started_at":"2026-10-28T12:00:00Z"}`
-
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"/api/workouts",
-		strings.NewReader(body),
-	)
-	recorder := httptest.NewRecorder()
-
-	app.createWorkout(recorder, request)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("got status %v, expected %v", recorder.Code, http.StatusBadRequest)
+func TestCreateWorkoutRejectsInvalidInput(t *testing.T) {
+	type testCase struct {
+		name     string
+		body     string
+		wantBody string
 	}
 
-	if recorder.Body.String() != "Workout name is required\n" {
-		t.Fatalf("response body incorrect: %v", recorder.Body.String())
+	tests := []testCase{
+		{
+			name:     "blank name",
+			body:     `{"name":"   ","started_at":"2026-10-28T12:00:00Z"}`,
+			wantBody: "Workout name is required\n",
+		},
+		{
+			name:     "missing start time",
+			body:     `{"name":"Push day"}`,
+			wantBody: "Workout start time is required\n",
+		},
+		{
+			name:     "malformed JSON",
+			body:     `{name:`,
+			wantBody: "Invalid request body\n",
+		},
+		{
+			name:     "unknown field",
+			body:     `{"name":"Push day","started_at":"2026-10-28T12:00:00Z","extra":true}`,
+			wantBody: "Invalid request body\n",
+		},
+		{
+			name:     "extra JSON value",
+			body:     `{"name":"Push day","started_at":"2026-10-28T12:00:00Z"} {}`,
+			wantBody: "Request body must contain a single JSON value\n",
+		},
 	}
-}
 
-func TestCreateWorkoutRejectsMissingStartTime(t *testing.T) {
-	app := &application{}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &application{}
 
-	body := `{"name":"Push day"}`
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/api/workouts",
+				strings.NewReader(tc.body),
+			)
+			recorder := httptest.NewRecorder()
 
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"/api/workouts",
-		strings.NewReader(body),
-	)
-	recorder := httptest.NewRecorder()
+			app.createWorkout(recorder, request)
 
-	app.createWorkout(recorder, request)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf(
+					"status = %d, want %d",
+					recorder.Code,
+					http.StatusBadRequest,
+				)
+			}
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("got status %v, expected %v", recorder.Code, http.StatusBadRequest)
-	}
-
-	if recorder.Body.String() != "Workout start time is required\n" {
-		t.Fatalf("response body incorrect: %v", recorder.Body.String())
+			if recorder.Body.String() != tc.wantBody {
+				t.Fatalf(
+					"body = %q, want %q",
+					recorder.Body.String(),
+					tc.wantBody,
+				)
+			}
+		})
 	}
 }
