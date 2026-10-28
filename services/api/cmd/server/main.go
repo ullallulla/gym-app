@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -91,6 +94,52 @@ func (app *application) listWorkouts(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(workouts); err != nil {
 		log.Printf("failed to write workouts response: %v", err)
+	}
+}
+
+func (app *application) getWorkout(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	id := r.PathValue("id")
+	var workoutID pgtype.UUID
+	var workout Workout
+
+	if err := workoutID.Scan(id); err != nil {
+		http.Error(w, "Invalid workout ID", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+	SELECT id::text, user_id, name, started_at, created_at, revision
+	FROM workouts
+	WHERE user_id = $1 AND id = $2
+	`
+
+	err := app.pool.QueryRow(ctx, query, "local-dev", workoutID).Scan(
+		&workout.ID,
+		&workout.UserID,
+		&workout.Name,
+		&workout.StartedAt,
+		&workout.CreatedAt,
+		&workout.Revision,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "Workout not found", http.StatusNotFound)
+		return
+	}
+
+	if err != nil {
+		log.Printf("failed to load workout: %v", err)
+		http.Error(w, "Could not load workout", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(workout); err != nil {
+		log.Printf("failed to write workout response: %v", err)
 	}
 }
 
@@ -238,6 +287,8 @@ func main() {
 	mux.HandleFunc("GET /api/health", healthHandler)
 
 	mux.HandleFunc("GET /api/workouts", app.listWorkouts)
+
+	mux.HandleFunc("GET /api/workouts/{id}", app.getWorkout)
 
 	mux.HandleFunc("POST /api/workouts", app.createWorkout)
 
