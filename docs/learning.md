@@ -1,13 +1,18 @@
 # Learning log
 
-Last checkpoint: 2026-10-27.
+Last checkpoint: 2026-10-28.
 
 ## Resume here
 
-The user stopped on 2026-10-27 after confirming the browser creation/error/recovery checks work as intended. **The first end-to-end workout creation flow is complete. No new exercise has been started.** Resume after this milestone; do not reassign the request type, transaction, or React creation-form exercises.
+The user resumed on 2026-10-28 after completing the browser creation/error/recovery checks on 2026-10-27. **The first end-to-end workout creation flow, handler extractions, Go health test, blank-name creation test, and missing-start-time creation test are complete. The user confirmed that list/create runtime checks after the refactor work. All three Go tests pass. The user asked to continue and requested a simple commit-message suggestion. This is a good commit checkpoint; suggested message: `Refactor API handlers and add validation tests`. Current exercise: consolidate the two rejection tests into a table-driven test. The user's implementation is pending; no commit has been made by the agent.** Do not reassign the earlier creation/refactor/test exercises as unfinished.
 
 Working at this checkpoint:
 
+- `GET /api/health` is registered with the package-level `healthHandler`, with its original body preserved. The extraction passed code review, `gofmt`, and Go compilation on 2026-10-28. The user confirmed the requested health check works as intended; the agent did not independently run it.
+- `services/api/cmd/server/main_test.go` contains `TestHealthHandler`, which directly calls the handler with an `httptest` request/recorder and checks successful JSON decoding, decoded status `ok`, HTTP 200, and JSON content type. Code review, formatting, and the actual automated test pass. The decoding failure message now includes `err`, and the agent confirmed this correction and reran the test successfully.
+- The same test file now contains `TestCreateWorkoutRejectsBlankName`. It sends a whitespace-only name with a valid timestamp to `app.createWorkout` on an application with no database pool, then asserts HTTP 400 and `"Workout name is required\n"`. The implementation is correct, the method call and both assertions are present, and the agent ran the test successfully. The leftover instructional comment has been removed; the user was told that all three steps were already complete.
+- `TestCreateWorkoutRejectsMissingStartTime` uses a valid name with `started_at` omitted, calls the same handler without a database pool, and asserts HTTP 400 plus `"Workout start time is required\n"`. Code review and formatting are clean, and the agent ran this test successfully alongside the other two tests.
+- `application` now holds `pool *pgxpool.Pool`; GET and POST workouts are package-level methods with receiver `app *application`. GET uses `app.pool.Query`, POST starts with `app.pool.Begin`, and subsequent writes/commit remain on `tx`. `main` creates `app := &application{pool: pool}` and registers `app.listWorkouts` and `app.createWorkout`. The moved bodies preserve validation, timeout, query, ownership, scanning, transaction/event ordering, commit-before-response, and error behavior. Code review and Go checks pass. The user confirmed the requested list/create runtime checks after extraction work; the agent did not independently perform them.
 - PostgreSQL 18 runs through the root `compose.yaml`, with a persistent named volume.
 - Go connects using `DATABASE_URL`, and `GET /api/workouts` reads the fixed `local-dev` owner's workouts into typed structs and returns JSON.
 - React's Load workouts button displays the stored `Push day` sample. The user reported the read flow working, including API database-outage/recovery checks.
@@ -20,19 +25,19 @@ Working at this checkpoint:
 - `tx.Commit(ctx)` runs after the event INSERT and before success headers/body. Commit errors are logged and return HTTP 500 immediately. On success, POST sets JSON content type, writes HTTP 201, and encodes the inserted `workout`. Deferred rollback/cancellation are retained; the temporary payload log is removed. Review and formatting/compilation pass. The user reports the commit/persistence exercise works as intended after checking the counter; no exact new counts or separate ID/revision/payload comparison were reported.
 - The earlier rollback exercises were user-confirmed: a valid HTTP 200 POST left the workout count at 1 before and after, the counter was observed absent before/after an earlier request, and the payload/event-insert exercises reportedly worked as intended. The later commit/persistence and intentional invalid-operation failure/rollback/recovery exercises are also user-confirmed. The agent confirmed `create` is restored by inspecting the source. No POST runtime or database checks were independently run by the agent, and a detailed event/workout payload comparison has not been separately reported.
 
-Starting point for the next session:
+Current exercise and next review:
 
 1. Read this checkpoint and `PLAN.md`, inspect Git status, and give a brief recap that workout creation is complete. Startup commands are in **Commands for resuming** below.
-2. No next feature or coding exercise was assigned before the user left. A suggested small Go-focused continuation is extracting `GET /api/health` from its anonymous callback into a named handler, preserving its behavior. This can introduce organizing handlers before more endpoints and meaningful Go tests. It is a suggestion, not an accepted or started refactor; follow the user's direction if they choose another roadmap step.
-3. If taking that continuation, start with the named health-handler function and registration only, then review the user's attempt and verify formatting/compilation/health behavior. Keep later resource-handler extraction and tests as separate exercises.
+2. The user's named `healthHandler` and `mux.HandleFunc("GET /api/health", healthHandler)` registration are correct. The response body, JSON content type, and encoding-error logging are unchanged. Go formatting/compilation pass.
+3. The individual rejection tests are complete and passing. Current exercise: keep the health test and replace the two rejection functions with `TestCreateWorkoutRejectsInvalidInput`. Inside it, define a `testCase` struct with string fields `name`, `body`, and `wantBody`, then a `[]testCase` containing the existing blank-name and missing-start-time inputs/messages. Iterate with `for _, tc := range tests` and `t.Run(tc.name, func(t *testing.T) { ... })`. A starter provides the data and loop; the user should move the existing request setup/handler call/assertions inside the callback, creating a fresh application/request/recorder for each case, using `strings.NewReader(tc.body)` and comparing the response to `tc.wantBody`. HTTP 400 remains common. Explain slices, keyed literals, ignored index, current element, and named subtests. Format and run Go tests; expect the health test plus two named rejection subtests. Review the user's attempt before adding cases. The agent has not edited application or test code.
 4. Preserve the working transaction protocol and server-controlled `local-dev` ownership. Authentication, richer workout logging, routing/query tooling, mobile synchronization, and backups remain later work in `PLAN.md`.
-5. Known follow-ups: three unchanged web formatting findings remain outside App.tsx; there are still no automated test files; a detailed event/workout ID/revision/payload comparison was not separately reported. These do not reopen the completed manual creation exercises.
+5. Known follow-ups: three unchanged web formatting findings remain outside App.tsx; automated coverage currently consists of the health-handler, blank-name rejection, and missing-start-time rejection tests; a detailed event/workout ID/revision/payload comparison was not separately reported. These do not reopen the completed manual creation exercises.
 
-Latest checks actually run (2026-10-27): `vp run build` passed after the final submit-button correction. `vp check src/App.tsx` initially failed formatting of the new button; ran `vp check --fix src/App.tsx`, which passed formatting/lint with no warnings/errors and changed only button layout/indentation. The build preceded that formatting-only change and was not repeated. The earlier TS6133 failures are resolved. The three previously known unchanged formatting findings were not rechecked. `vp test` previously exited 1 because no test files exist; it was not repeated. Go formatting/compilation previously passed after restoring the valid event operation. `vp install` passed at session start. No browser/API/database checks were independently run by the agent.
+Latest checks actually run (2026-10-28): after the missing-start-time test implementation, `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go` returned no findings. `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v` executed and passed `TestHealthHandler`, `TestCreateWorkoutRejectsBlankName`, and `TestCreateWorkoutRejectsMissingStartTime`; the result was not reported as cached. No automated workout-list or successful-creation test exists. `vp install` passed at session start. Web checks were not repeated for these Go-only changes. On 2026-10-27, `vp run build` passed after the final submit-button correction. `vp check src/App.tsx` initially failed formatting of the new button; ran `vp check --fix src/App.tsx`, which passed formatting/lint with no warnings/errors and changed only button layout/indentation. The build preceded that formatting-only change and was not repeated. The earlier TS6133 failures are resolved. The three previously known unchanged formatting findings were not rechecked. `vp test` previously exited 1 because no web test files exist; it was not repeated. No browser/API/database checks were independently run by the agent.
 
 Tooling: the user's login shell is Fish. Global Vite+ is installed; the agent's Bash shell can source `/home/allu/.config/vite-plus/env` when needed. Goose v3.29.0 is installed at `/home/allu/go/bin/goose`. If a fresh Fish terminal cannot find it, the proposed persistent fix is `fish_add_path --universal /home/allu/go/bin`; persistence has not been separately confirmed by the user.
 
-Restart commands are in **Commands for resuming** below. Start PostgreSQL first and set `DATABASE_URL` again in a new terminal. At this stopping checkpoint, `apps/web/src/App.tsx` and `docs/learning.md` are modified and uncommitted; the Go server and migrations are tracked with no current changes. No Git commit was made by the agent. All work is saved on disk; no processes or containers were stopped by the agent.
+Restart commands are in **Commands for resuming** below. Start PostgreSQL first and set `DATABASE_URL` again in a new terminal. Git was clean on resumption on 2026-10-28. Current uncommitted changes are the user's health/workout handler extractions in `services/api/cmd/server/main.go`, the new untracked `services/api/cmd/server/main_test.go`, and this learning log. The agent has updated only the log. No Git commit was made by the agent. No processes or containers were started or stopped by the agent.
 
 ## How we are working
 
@@ -679,6 +684,99 @@ Session stopping checkpoint (2026-10-27):
 - Read the roadmap and checkpoint, inspected the current form/transaction markers, restart configuration, and Git status. Current uncommitted files are App.tsx and this learning log. Application code was not changed for this save-only checkpoint, and no Git commit or service shutdown was performed.
 - Saved the exact resume boundary: the completed creation exercises should not be reassigned. A named Go health-handler extraction is a suggested, unstarted continuation; no new feature/refactor has been accepted or implemented.
 - No builds or tests were repeated. The latest successful web build/component formatting/lint and Go formatting/compilation results remain those recorded above; no automated test cases exist.
+
+Session resumption and named-handler exercise (2026-10-28):
+
+- Read the checkpoint, roadmap, repository instructions, package scripts, Vite configuration, and Go server. Git status was clean. The health endpoint remains an anonymous callback with no database-pool dependency; the completed workout transaction is unchanged.
+- Ran `vp install` from the project root after sourcing the Vite+ environment: passed with dependencies already up to date. No builds, tests, browser/API calls, or database checks were run.
+- Assigned a small extraction exercise: move the existing health callback body unchanged into a package-level `healthHandler` with the same parameters, then pass that function to `mux.HandleFunc`. Explain passing a function value without parentheses. The implementation is left to the user; review and verification follow their attempt.
+- Application code was not edited. No runtime results were newly reported by the user. Later handler extraction and automated tests remain separate exercises.
+
+Named health-handler review (2026-10-28):
+
+- Inspected the user's diff and current server: `healthHandler` is at package scope, the original body is preserved, and the health route passes the function value correctly. The extraction matches the exercise; no application corrections were needed or made by the agent.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./...`: compilation passed, with no test files and no behavioral cases run.
+- Assigned runtime verification after restarting Go: `curl -i http://localhost:8080/api/health` should return HTTP 200, JSON content type, and the existing status object. This result is pending; no browser/API/database checks were run by the agent.
+- A first `net/http/httptest` exercise can follow the health confirmation. No test-writing exercise or further handler extraction has been assigned yet.
+
+Health confirmation and first Go test exercise (2026-10-28):
+
+- The user reported that the requested health verification works as intended. Mark the extraction complete on this user-reported basis; the agent did not run a live request or inspect its output.
+- Reinspected the health handler, Go module, tracked file list, and Git status. No test files exist. Consulted installed Go documentation for `httptest.NewRequest`, `httptest.NewRecorder`, `ResponseRecorder.Result`, and `testing.T.Fatalf`.
+- Assigned the first test in `cmd/server/main_test.go`, using the same package, a synthetic request, an in-memory response recorder, and direct handler invocation. Provide a starting example with a status assertion; leave the JSON content-type and decoded status checks for the user. Explain Go test discovery, the test failure method, and that calling this handler does not run `main` or connect to PostgreSQL.
+- No application/test code was edited and no builds/tests were rerun for this guidance-only step. The latest Go formatting/compilation results remain the passing extraction review above. The test implementation and execution are pending.
+
+First Go handler-test review (2026-10-28):
+
+- Inspected `main_test.go` and the server diff. The user's test correctly uses a synthetic GET request, response recorder, direct handler call, `Result`, and deferred body close. It checks the decoding error before inspecting the map and asserts decoded status `ok`, HTTP 200, and JSON content type.
+- Ran `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: `TestHealthHandler` ran and passed. This is an actual automated behavioral test, unlike the earlier compilation-only results.
+- Marked the first-test exercise complete. Suggested a small optional improvement to the decoding failure diagnostic: include the actual `err`, for example `t.Fatalf("decode health response: %v", err)`. The current assertion is valid and was left unchanged for the user.
+- No application or test code was edited by the agent, and no live API/database/browser checks were run. Updated only this log. No next exercise has been assigned.
+
+Diagnostic confirmation and workout-handler method exercise (2026-10-28):
+
+- Inspected the updated test: its decoding branch now uses `t.Fatalf("decode health response: %v", err)`, correctly preserving the underlying error in failure output. The other assertions remain correct.
+- Ran `gofmt -l services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: `TestHealthHandler` ran and passed.
+- Assigned the next small Go exercise: define an `application` struct holding `pool *pgxpool.Pool`, extract GET workouts into an `app *application` receiver method, use `app.pool.Query`, instantiate the application in `main` with the existing pool, and register `app.listWorkouts`. Explain struct fields and method receivers while preserving the existing behavior. The user's implementation is pending; POST remains a later exercise.
+- Updated only this log. No application/test code edits, browser/API/database checks, commits, or service changes were made by the agent.
+
+Workout-list method review and syntax explanation (2026-10-28):
+
+- The user requested review and, if correct, a line-by-line explanation because the syntax was not fully understood. Inspected the server diff and current numbered source plus the health test.
+- The extraction is correct: the new struct stores the existing pool pointer, `listWorkouts` is a pointer-receiver method using `app.pool.Query`, and `main` constructs the application and registers its method value. The existing GET body and POST behavior are preserved.
+- Ran `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: `TestHealthHandler` passed, and the server package compiles. No test exercises workout listing, and no live API/database/browser checks were run. No new runtime results were reported by the user.
+- Explain each newly introduced declaration/expression, focusing on struct fields, pointer type versus address-taking syntax, receiver scope, keyed construction, and bound method registration. Keep understanding as the priority; no new coding exercise is assigned. A runtime list check after restarting Go remains pending.
+- Updated only this log; application/test code was not edited by the agent.
+
+Continuation after syntax explanation (2026-10-28):
+
+- The user asked to continue after the line-by-line explanation of the application struct, pointer types/address-taking, receiver and parameter scope, field access, struct construction, and method-value registration. Do not repeat the explanation or reassign the GET extraction unless requested.
+- Reinspected the checkpoint, roadmap, Git status, current handlers, health test, and web scripts/configuration. GET remains correctly extracted; POST is still the original anonymous callback using the local `pool`.
+- Assigned a small continuation: first restart Go and verify the React workout list, then move POST into an `application.createWorkout` receiver method, use `app.pool.Begin(ctx)`, and register `app.createWorkout`. Reuse the existing application instance and preserve the full transaction/validation protocol. User runtime results and the implementation are pending.
+- No new runtime results were reported, no checks were rerun for this guidance-only step, and no application/test code was edited by the agent. The prior formatting and health-test results remain the latest executed checks. Updated only this log.
+
+Workout-creation method review (2026-10-28):
+
+- Inspected the user's server diff, numbered source, and health test after they said "done". The POST extraction is correct: `createWorkout` has the application receiver, begins with `app.pool.Begin(ctx)`, and is registered with `app.createWorkout` using the existing instance.
+- Request validation and timeouts are preserved. Counter allocation, workout insertion, event serialization/insertion, rollback, commit, and response ordering remain intact, with all transactional operations on `tx`. The user needs no code corrections for this exercise.
+- Ran `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: passed, reporting a cached successful `TestHealthHandler` result. This does not behaviorally verify either workout endpoint.
+- Assigned the remaining focused runtime checks after restarting Go: load stored workouts, then create one through React and confirm success, cleared input, and refreshed list. The user did not separately report the GET runtime result with this implementation, so both results remain pending. Do not reopen the earlier completed outage/rollback exercises.
+- No application/test code was edited by the agent. No live API/database/browser checks were run. Updated only this log. Rejected-request tests are a possible next exercise after this verification, not yet assigned.
+
+Refactor runtime confirmation and blank-name test exercise (2026-10-28):
+
+- The user reported "works" after being asked to restart Go, load stored workouts, and create one through React with success/input clearing/list refresh. Record the refactor runtime checks as user-confirmed; the agent did not independently run browser/API/database checks.
+- Reinspected the creation validation path, existing health test, and Git status. Confirmed whitespace trimming/name rejection precedes `app.pool.Begin`. Consulted installed Go documentation for `strings.NewReader` and `httptest.NewRequest`.
+- Assigned a focused creation-validation test for a whitespace-only name and valid timestamp. Use a zero-valued application, POST body reader, and response recorder. Leave the direct method call, HTTP 400 assertion, and exact plain-text error assertion for the user. This tests the validation behavior without connecting to a database. Later rejection cases and table-driven syntax remain separate exercises.
+- No application/test code was edited and no builds/tests were rerun for this guidance-only step. Only this log was updated. The user's test implementation and test-run results are pending; the last executed Go checks remain those from the POST extraction review.
+
+Blank-name test assistance and passing review (2026-10-28):
+
+- The user asked how to perform the direct method call and was shown `app.createWorkout(recorder, request)` with receiver/parameter mapping. They then asked for assistance without identifying a particular line.
+- Inspected the current test and handler: the user's test already has the correct call, HTTP 400 assertion, and exact error-body assertion. JSON is valid, the timestamp is nonzero, and the whitespace-only name exercises trimming/name validation before pool access. No corrections were needed or made.
+- Ran `gofmt -l services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: both `TestHealthHandler` and `TestCreateWorkoutRejectsBlankName` executed and passed. These are actual automated test results; no live API/database/browser checks were run.
+- Mark the implementation complete and explain the assertions and execution flow. The user's request for assistance takes priority over assigning further exercises. No new exercise has been assigned. Updated only this log; application/test code was not edited by the agent.
+
+Missing-start-time test exercise (2026-10-28):
+
+- Explained the passing blank-name test and confirmed that the leftover comment was only an instructional placeholder, with no missing code. The user then asked to continue.
+- Reinspected the current test, handler validation, checkpoint, and Git status. The placeholder comment is now removed, and no new test has been added yet. The start-time error text remains `Workout start time is required`, and this validation precedes database access.
+- Assigned one additional case with the same syntax: copy the blank-name test, rename it `TestCreateWorkoutRejectsMissingStartTime`, send `{"name":"Push day"}`, keep HTTP 400, and expect `"Workout start time is required\n"`. Explain zero values for omitted JSON fields and choosing a valid name to reach the intended validation branch. Format and run Go tests; three tests should pass once implemented.
+- No builds/tests were repeated for this guidance-only step. No application/test code was edited by the agent; updated only this log. The new implementation and its test result are pending. Table-driven tests have not been assigned.
+
+Missing-start-time test review (2026-10-28):
+
+- Inspected the new test, current validation path, and Git status. The user correctly added a separate `TestCreateWorkoutRejectsMissingStartTime`, sends `{"name":"Push day"}`, and asserts HTTP 400 plus the start-time-specific error text with its trailing newline. This reaches the intended validation before database access. No corrections were needed.
+- Ran `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: all three tests executed and passed; output was not reported as cached.
+- Marked the exercise complete. No further coding exercise has been assigned; table-driven tests are a possible next topic. No application/test code was edited by the agent, and no browser/API/database checks were run. Updated only this log.
+
+Commit checkpoint and table-driven test exercise (2026-10-28):
+
+- The user asked to continue and, if appropriate, receive a simple commit-message suggestion. Inspected Git status, tracked/staged diffs, current test source, checkpoint, and roadmap. Pending work is limited to the handler refactor, new test file, and learning log; no staged changes were present.
+- Recommended committing the completed refactor/test milestone with `Refactor API handlers and add validation tests`, including the server, test file, and learning log. The user requested a suggestion, so no staging or commit was performed by the agent. A user-made commit has not been reported or verified.
+- Ran `git diff --check`: no findings. Did not repeat already-passing Go tests for unchanged application/test code. Consulted installed `testing.T.Run` documentation.
+- Assigned a table-driven refactor of the existing two rejection tests, retaining health coverage. Provide a named case type, two data rows, and a `range`/`t.Run` scaffold; the user should adapt their existing setup and assertions to the current case. Explain new syntax and keep both existing behaviors. Implementation and verification are pending; no new rejection cases have been assigned yet.
+- Updated only this log. No application/test code, live services, database state, or Git history was changed by the agent.
 
 ## Commands for resuming
 
