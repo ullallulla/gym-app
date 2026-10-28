@@ -16,6 +16,9 @@ function App() {
   const [workoutName, setWorkoutName] = useState("");
   const [createStatus, setCreateStatus] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
+  const [detailStatus, setDetailStatus] = useState("");
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
   async function checkApi() {
     const url = "/api/health";
@@ -30,6 +33,33 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setApiStatus(`Error: ${message}`);
+    }
+  }
+
+  async function loadWorkout(id: string) {
+    const url = `/api/workouts/${id}`;
+
+    if (isLoadingDetail) {
+      return;
+    }
+
+    setDetailStatus("Loading...");
+    setIsLoadingDetail(true);
+    setSelectedWorkout(null);
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Response.status: ${response.status}`);
+      }
+      const result: Workout = await response.json();
+      setSelectedWorkout(result);
+      setDetailStatus("Loaded");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setDetailStatus(`Error: ${message}`);
+    } finally {
+      setIsLoadingDetail(false);
     }
   }
 
@@ -89,9 +119,19 @@ function App() {
 
       <ul>
         {workouts.map((workout) => (
-          <li key={workout.id}>{workout.name}</li>
+          <li key={workout.id}>
+            <button
+              type="button"
+              disabled={isLoadingDetail}
+              onClick={() => void loadWorkout(workout.id)}
+            >
+              {workout.name}
+            </button>
+          </li>
         ))}
       </ul>
+      <p>{detailStatus}</p>
+      <p>{selectedWorkout ? selectedWorkout.name : "Select a workout"}</p>
       <label htmlFor="workout-name">Workout name</label>
       <p>{createStatus}</p>
       <form
