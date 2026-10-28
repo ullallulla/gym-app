@@ -131,7 +131,14 @@ function App() {
         ))}
       </ul>
       <p>{detailStatus}</p>
-      <p>{selectedWorkout ? selectedWorkout.name : "Select a workout"}</p>
+      {selectedWorkout ? (
+        <section>
+          <h2>{selectedWorkout.name}</h2>
+          <p>Started: {new Date(selectedWorkout.started_at).toLocaleString()}</p>
+        </section>
+      ) : (
+        <p>Select a workout</p>
+      )}
       <label htmlFor="workout-name">Workout name</label>
       <p>{createStatus}</p>
       <form
