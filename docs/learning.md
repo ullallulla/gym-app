@@ -6,14 +6,14 @@ Updated: 2026-10-29.
 
 - Working: Go health and workout create/list/detail endpoints; React workout creation, list, and detail views.
 - Workout-set logging is in progress. Migration 3, request/response types, validation, rejection tests, and owner-filtered parent lookup are implemented.
-- `POST /api/workouts/{id}/sets` returns 400 for invalid input, 404 for a missing parent, 500 on lookup failure, and temporary 501 for a valid request. It saves no set yet.
-- All assigned exercises are complete. No exercise is currently assigned.
+- `POST /api/workouts/{id}/sets` validates input, allocates the counter, checks the parent, inserts/scans a set and snapshot event, commits, then returns 201 JSON. Live persistence is user-confirmed.
+- Handler review and successful-creation verification are complete. No active exercise.
 
 ## Next step
 
-On “continue,” guide transaction setup in `createWorkoutSet`: begin with the existing context, handle errors, defer rollback, and move the parent lookup to `tx.QueryRow`. Reuse `err` with `=` after `tx, err :=`. Keep 501 until persistence is ready.
+On “continue,” guide a deliberate change-event insert failure: verify HTTP 500 and unchanged set/event counts and counter. Restore operation `create` afterward and verify successful creation again.
 
-Then add counter allocation, set insertion, a full-snapshot change event, and commit before returning 201. Set UI follows later; roadmap: `PLAN.md`.
+Set listing/UI follow later; roadmap: `PLAN.md`.
 
 ## Essential constraints
 
@@ -22,8 +22,8 @@ Then add counter allocation, set insertion, a full-snapshot change event, and co
 
 ## Latest verification
 
-- Agent review: parent lookup is correct; Go formatting and `go -C services/api test ./... -v -count=1` passed (2026-10-29). Tests cover health, input validation, and request rejection, without database integration.
-- User reports: migration/constraint exercises and lookup/outage/recovery checks passed. Latest screenshot shows the expected 501 placeholder. Migration Down remains untested.
+- Agent review (2026-10-29): duplicate rollback removed; the early defer remains. Formatting is clean. `go -C services/api test ./... -count=1` passed before this one-line cleanup. Tests cover health, input validation, and request rejection, without database integration.
+- User reports: live POST returns 201 with the stored set, matching snapshot event, and exactly +1 counter increment. Prior migration/constraint and lookup/outage/recovery exercises passed. Migration Down remains untested.
 
 ## Startup
 

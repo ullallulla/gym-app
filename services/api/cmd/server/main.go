@@ -327,7 +327,118 @@ func (app *application) createWorkoutSet(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	http.Error(w, "Workout set creation is not implemented yet", http.StatusNotImplemented)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	tx, err := app.pool.Begin(ctx)
+
+	if err != nil {
+		log.Printf(`begin workout set transaction: %v`, err)
+		http.Error(w, "Could not create workout set", http.StatusInternalServerError)
+		return
+	}
+
+	defer tx.Rollback(ctx)
+
+	userID := "local-dev"
+	var sequence int64
+	var workoutExists bool
+
+	query := `SELECT EXISTS (
+	SELECT 1
+	FROM workouts
+	WHERE user_id = $1 AND id = $2
+	)`
+
+	counterQuery := `INSERT INTO user_change_counters (user_id, last_sequence)
+	VALUES ($1, 1)
+	ON CONFLICT (user_id)
+	DO UPDATE SET last_sequence = user_change_counters.last_sequence + 1
+	RETURNING last_sequence`
+
+	if err := tx.QueryRow(ctx, counterQuery, userID).Scan(&sequence); err != nil {
+		log.Printf("allocate workout set change sequence: %v", err)
+		http.Error(w, "Could not create workout set", http.StatusInternalServerError)
+		return
+	}
+
+	err = tx.QueryRow(ctx, query, userID, workoutID).Scan(&workoutExists)
+
+	if err != nil {
+		log.Printf("check workout for set creation: %v", err)
+		http.Error(w, "Could not load workout", http.StatusInternalServerError)
+		return
+	}
+
+	if !workoutExists {
+		http.Error(w, "Workout not found", http.StatusNotFound)
+		return
+	}
+
+	var workoutSet WorkoutSet
+
+	setQuery := `INSERT INTO workout_sets
+    (user_id, workout_id, exercise_name, reps, weight_kg)
+	VALUES ($1, $2, $3, $4, $5)
+	RETURNING id::text, user_id, workout_id::text,
+    exercise_name, reps, weight_kg, created_at, revision`
+
+	err = tx.QueryRow(ctx, setQuery, userID, workoutID,
+		request.ExerciseName, request.Reps, request.WeightKg,
+	).Scan(
+		&workoutSet.ID,
+		&workoutSet.UserID,
+		&workoutSet.WorkoutID,
+		&workoutSet.ExerciseName,
+		&workoutSet.Reps,
+		&workoutSet.WeightKg,
+		&workoutSet.CreatedAt,
+		&workoutSet.Revision,
+	)
+
+	if err != nil {
+		log.Printf("insert workout set: %v", err)
+		http.Error(w, "Could not create workout set", http.StatusInternalServerError)
+		return
+	}
+
+	payload, err := json.Marshal(workoutSet)
+
+	if err != nil {
+		log.Printf("serialize workout set: %v", err)
+		http.Error(w, "Could not create workout set", http.StatusInternalServerError)
+		return
+	}
+
+	changeQuery := `INSERT INTO change_log
+    (user_id, sequence, entity_type, entity_id, operation, revision, payload)
+	VALUES ($1, $2, 'workout_set', $3, 'create', $4, $5)`
+
+	if _, err := tx.Exec(
+		ctx,
+		changeQuery,
+		userID,
+		sequence,
+		workoutSet.ID,
+		workoutSet.Revision,
+		payload,
+	); err != nil {
+		log.Printf("insert workout set change event: %v", err)
+		http.Error(w, "Could not create workout set", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		log.Printf("commit workout set transaction: %v", err)
+		http.Error(w, "Could not create workout set", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	if err := json.NewEncoder(w).Encode(workoutSet); err != nil {
+		log.Printf("write workout set response: %v", err)
+	}
 }
 
 func main() {
