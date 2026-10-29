@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -28,6 +29,12 @@ type Workout struct {
 type CreateWorkoutRequest struct {
 	Name      string    `json:"name"`
 	StartedAt time.Time `json:"started_at"`
+}
+
+type CreateWorkoutSetRequest struct {
+	ExerciseName string  `json:"exercise_name"`
+	Reps         int     `json:"reps"`
+	WeightKg     float64 `json:"weight_kg"`
 }
 
 type application struct {
@@ -255,6 +262,24 @@ func (app *application) createWorkout(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(workout); err != nil {
 		log.Printf("failed to write workout request response: %v", err)
 	}
+}
+
+func (request *CreateWorkoutSetRequest) validate() error {
+	request.ExerciseName = strings.TrimSpace(request.ExerciseName)
+
+	if request.ExerciseName == "" {
+		return errors.New("exercise name is required")
+	}
+
+	if request.Reps <= 0 {
+		return errors.New("reps must be greater than zero")
+	}
+
+	if request.WeightKg < 0 || math.IsNaN(request.WeightKg) || math.IsInf(request.WeightKg, 0) {
+		return errors.New("weight must be finite and zero or greater")
+	}
+
+	return nil
 }
 
 func main() {

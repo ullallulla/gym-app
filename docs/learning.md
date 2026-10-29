@@ -1,22 +1,23 @@
 # Learning log
 
-Last checkpoint: 2026-10-28.
+Last checkpoint: 2026-10-29.
 
 ## Resume here
 
-The user resumed on 2026-10-28 after completing the browser creation/error/recovery checks on 2026-10-27. **The creation flow, handler refactor, validation tests, and single-workout lookup (`93a44d7`) are complete. React selection/detail fetching is now complete too: component/build checks pass, and the user confirmed GET success, visible errors, throttled Loading/disabled controls, and successful retry/recovery. No further exercise has been assigned. Suggested commit message for App.tsx and this log: `Load selected workout from API`.** Do not reassign completed exercises as unfinished. No commit has been made by the agent.
+The user stopped on 2026-10-29 and explicitly asked to save arrangements for continuing later. **All exercises assigned this session are complete: the selected-workout UI is committed in `3ddd385`, full web formatting/lint passes, and the kg request type, validator, and three-case validator test are correct and saved. The validator table covers valid input/name trimming, zero weight accepted, and zero reps rejected. Go formatting and all tests pass. No next exercise has been accepted or started.** Workout-set logging remains in progress: there is no set table, endpoint, or UI yet. Suggested next work is adding the remaining rejection/nonfinite test rows. The specific heading/date browser display has not been separately reported. No commit has been made by the agent.
 
 Working at this checkpoint:
 
 - `GET /api/health` is registered with the package-level `healthHandler`, with its original body preserved. The extraction passed code review, `gofmt`, and Go compilation on 2026-10-28. The user confirmed the requested health check works as intended; the agent did not independently run it.
 - `services/api/cmd/server/main_test.go` contains `TestHealthHandler`, which directly calls the handler with an `httptest` request/recorder and checks successful JSON decoding, decoded status `ok`, HTTP 200, and JSON content type. Code review, formatting, and the actual automated test pass. The decoding failure message now includes `err`, and the agent confirmed this correction and reran the test successfully.
+- Workout-set logging is the new selected feature. The kg request type and pointer-receiver validator are correct. Its table-driven test now contains `valid and trimmed`, `zero weight`, and `zero reps`. The shared callback copies/calls each request, checks nil error/name for success, and safely checks non-nil before matching err.Error for rejection. The old commented-out test body has been removed. All three rows and existing tests pass, with clean formatting. No set table, endpoint, or UI exists yet.
 - `TestCreateWorkoutRejectsInvalidInput` has a local case type, five data rows, and a shared `range`/`t.Run` body with a fresh application/request/recorder for each case. Blank name expects HTTP 400 plus `"Workout name is required\n"`; missing start time expects HTTP 400 plus `"Workout start time is required\n"`; malformed JSON uses raw-string body `{name:` and expects HTTP 400 plus `"Invalid request body\n"`; unknown field uses otherwise-valid JSON with `"extra":true` and also expects HTTP 400 plus `"Invalid request body\n"`; extra JSON value uses a valid workout object followed by `{}` and expects HTTP 400 plus `"Request body must contain a single JSON value\n"`. All five run without a database pool and pass. The old standalone functions have been removed, leaving the health test and this table-driven function. The initial table-driven validation exercise is complete.
 - `application` now holds `pool *pgxpool.Pool`; GET and POST workouts are package-level methods with receiver `app *application`. GET uses `app.pool.Query`, POST starts with `app.pool.Begin`, and subsequent writes/commit remain on `tx`. `main` creates `app := &application{pool: pool}` and registers `app.listWorkouts` and `app.createWorkout`. The moved bodies preserve validation, timeout, query, ownership, scanning, transaction/event ordering, commit-before-response, and error behavior. Code review and Go checks pass. The user confirmed the requested list/create runtime checks after extraction work; the agent did not independently perform them.
 - `application.getWorkout` has a five-second request context, validates the path UUID, and queries/scans the six workout fields with server-selected `local-dev` owner and parsed UUID. `errors.Is(err, pgx.ErrNoRows)` returns HTTP 404 before the general logged HTTP 500 branch; success sets JSON content type and encodes the full workout. The temporary ID map is removed. The 404 message is correctly `Workout not found`. Stored-ID success/full JSON, absent-ID 404, invalid-ID 400, outage 500, and recovery without restarting Go are user-confirmed; the agent did not run these requests. The endpoint exercise is complete. No automated route/database test exists yet.
 - PostgreSQL 18 runs through the root `compose.yaml`, with a persistent named volume.
 - Go connects using `DATABASE_URL`, and `GET /api/workouts` reads the fixed `local-dev` owner's workouts into typed structs and returns JSON.
 - React's Load workouts button displays the stored `Push day` sample. The user reported the read flow working, including API database-outage/recovery checks.
-- `App.tsx` has nullable selection plus `detailStatus` and `isLoadingDetail`. The async singular `loadWorkout(id)` correctly guards pending work, sets loading/pending state, clears the prior selection, fetches the single-workout URL, checks HTTP status, parses/stores a `Workout`, updates success/errors, and resets pending in finally. Keyed buttons correctly call it with `() => void loadWorkout(workout.id)` and disable during loading. Both detail-status and selected-name paragraphs are correctly below the list. TS6133 and the lint warning are resolved; component checks/build pass. The user confirmed GET success/Loaded/name, visible failure with PostgreSQL stopped, and slow-request Loading/disabled controls followed by successful recovery and enabled buttons. These browser results are user-reported; no independent browser check was run by the agent.
+- `App.tsx` has nullable selection plus `detailStatus` and `isLoadingDetail`. The async `loadWorkout(id)` fetch/status/error/pending behavior and disabled arrow-callback buttons remain intact. The selected section correctly renders an `<h2>` for the name and `<p>Started: {new Date(selectedWorkout.started_at).toLocaleString()}</p>`, retaining the fallback prompt and separate detailStatus paragraph below the list. The label correction is confirmed by source inspection. Component formatting/lint and build passed before this text-only fix, and the latest full formatting scan does not flag App.tsx. Earlier fetch success/error/throttled pending/recovery behavior is user-confirmed; this new section's browser display is not yet reported. No independent browser check was run by the agent.
 - React has the correct POST payload/success path, form submission, creation-error state, pending guard/set/finally reset, status display, and input/button disabled conditions. Successful creation clears the input and reloads the list. The user confirmed browser creation, visible errors with the entered name preserved during a database outage, and successful retry after PostgreSQL recovery. These are user-reported results; the agent inspected the code and ran component/build checks, not browser tests.
 - Goose migration 1 creates `workouts`; migration 2 creates `user_change_counters` and `change_log`. The user reported applying and inspecting both successfully. The agent reviewed SQL and ran Goose file validation, but did not execute migrations or inspect the live database.
 - Transaction practice demonstrated that an inserted row is visible inside its transaction and disappears after `ROLLBACK` (user-reported).
@@ -26,25 +27,26 @@ Working at this checkpoint:
 - `tx.Commit(ctx)` runs after the event INSERT and before success headers/body. Commit errors are logged and return HTTP 500 immediately. On success, POST sets JSON content type, writes HTTP 201, and encodes the inserted `workout`. Deferred rollback/cancellation are retained; the temporary payload log is removed. Review and formatting/compilation pass. The user reports the commit/persistence exercise works as intended after checking the counter; no exact new counts or separate ID/revision/payload comparison were reported.
 - The earlier rollback exercises were user-confirmed: a valid HTTP 200 POST left the workout count at 1 before and after, the counter was observed absent before/after an earlier request, and the payload/event-insert exercises reportedly worked as intended. The later commit/persistence and intentional invalid-operation failure/rollback/recovery exercises are also user-confirmed. The agent confirmed `create` is restored by inspecting the source. No POST runtime or database checks were independently run by the agent, and a detailed event/workout payload comparison has not been separately reported.
 
-Current checkpoint and next step:
+Starting point for the next session:
 
-1. Read this checkpoint and `PLAN.md`, inspect Git status, and give a brief recap that workout creation is complete. Startup commands are in **Commands for resuming** below.
-2. The user's named `healthHandler` and `mux.HandleFunc("GET /api/health", healthHandler)` registration are correct. The response body, JSON content type, and encoding-error logging are unchanged. Go formatting/compilation pass.
-3. The frontend selection/detail-fetch exercise and browser pending/error/recovery checks are complete. No new exercise has been assigned. Suggested commit checkpoint: `Load selected workout from API`, including `apps/web/src/App.tsx` and this log. A possible next small step is a selected-workout section showing its name/start time, or the next chosen workout-logging feature; neither has been assigned. Continue small explained exercises and use `vp run build` for this project's tsc/build script. The user understands that Loaded is page state, Network shows HTTP status/JSON, and throttling makes fast pending states observable.
+1. Read **Resume here**, PLAN.md, Git status, and recent commits before continuing. Briefly recap that this session's exercises are complete and set logging is the ongoing feature. Run `vp install` at the next session start, per AGENTS.md. Startup and quick Go-test commands are in **Commands for resuming** below.
+2. The latest verified commit is `3ddd385` (`Show selected workout details`), following `278011e` for formatting cleanup. Current uncommitted work is PLAN.md (accepted kg-set requirement), main.go (request type/validator), main_test.go (three-case validator test), and this log. All are saved on disk. A suitable optional commit message is `Add workout set validation and tests`. Do not assume the user has committed these files; check Git on return. No staging or commit was performed by the agent.
+3. No next exercise was assigned before stopping. Suggested continuation: add rows to the existing validator table, first for whitespace-only name, negative reps, and negative weight, then for math.NaN() and math.Inf(1)/math.Inf(-1). Keep other fields valid so each row tests its intended rule, and retain the correct existing shared callback and three passing cases. This is an unstarted suggestion; follow the user's direction. Request-type creation, validator implementation, syntax explanation, and the three-case test should not be reassigned. Migration/endpoint/UI are later separate steps, not yet assigned.
 4. Preserve the working transaction protocol and server-controlled `local-dev` ownership. Authentication, richer workout logging, routing/query tooling, mobile synchronization, and backups remain later work in `PLAN.md`.
-5. Known follow-ups: three unchanged web formatting findings remain outside App.tsx; automated coverage currently consists of health plus blank-name, missing-start-time, malformed-JSON, unknown-field, and extra-JSON-value rejection cases; a detailed event/workout ID/revision/payload comparison was not separately reported. These do not reopen the completed manual creation exercises or the completed five-case testing exercise.
+5. Known follow-ups: no web tests or automated lookup/database tests exist; current automated coverage is health, five creation-rejection cases, and three set-validator cases (valid/name normalization, zero weight, zero reps). The validator's other rejection/nonfinite cases are not tested yet. The specific new selected-workout heading/date display and a detailed event/workout ID/revision/payload comparison have not been separately reported. These do not reopen completed exercises. The prior formatting findings are resolved.
 
-Latest checks actually run (2026-10-28): after rendering detailStatus, `vp check src/App.tsx` passed formatting/lint with no warnings/errors, and `vp run build` passed TypeScript and production bundling. TS6133 is resolved, and no formatting/source edits were made this turn. The three unrelated full-check formatting findings (`package.json`, `src/main.tsx`, `vite.config.ts`) have not been rechecked/fixed. `vp test` most recently exited 1 with no web test files; it was not repeated after this small JSX fix. `vp install` passed at session start. Latest Go checks remain the final lookup checkpoint: clean `gofmt`, successful `go test ./... -v` with cached health/five-case results. Those tests do not exercise lookup or React selection. No browser/API/database checks were independently run by the agent.
+Latest checks actually run (2026-10-29): after completing the three-case validator table, `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go` returned no findings. `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v` executed and passed health, five creation-rejection subtests, and validator subtests `valid_and_trimmed`, `zero_weight`, and `zero_reps`, without a cached-result marker. No builds/tests were repeated for this stopping checkpoint because code is unchanged. Full web `vp check` most recently passed formatting for seven files/lint for three with no warnings/errors; it was not repeated for the Go-only work. `vp install` passed at session start. Earlier today, component checks and `vp run build` passed for the UI section before its text-only Started label correction. `vp test` most recently exited 1 with no web test files. No application/test source edits were made by the agent. Earlier browser/API/database confirmations remain user-reported; no new runtime checks were run by the agent.
 
 Tooling: the user's login shell is Fish. Global Vite+ is installed; the agent's Bash shell can source `/home/allu/.config/vite-plus/env` when needed. Goose v3.29.0 is installed at `/home/allu/go/bin/goose`. If a fresh Fish terminal cannot find it, the proposed persistent fix is `fish_add_path --universal /home/allu/go/bin`; persistence has not been separately confirmed by the user.
 
-Restart commands are in **Commands for resuming** below. Start PostgreSQL first and set `DATABASE_URL` again in a new terminal. Confirmed the user's commits `c665fb0`, `7aeeed6`, and `93a44d7` with Git log. Current uncommitted changes are React selection/detail fetching in `apps/web/src/App.tsx` and this log. The agent has formatted App.tsx and updated the log, with no functional application edits. No Git commit was made by the agent. No processes or containers were started or stopped by the agent.
+Restart commands are in **Commands for resuming** below. The next validator-test step can use Go tests directly; start PostgreSQL/Go/web services when running the full app. Set `DATABASE_URL` again in a fresh API terminal. The last verified commit is `3ddd385`, and the four modified files listed above remain uncommitted. For this save-only checkpoint the agent edited only this log. No Git commit or service shutdown was performed by the agent; current process/container state was not inspected.
 
 ## How we are working
 
 - Learning through building is an explicit project goal. The user knows Python and TypeScript, wants to learn Go, and wants no Python in the application stack.
 - Use small exercises with a concrete result. Explain the relevant concept, let the user attempt the code, review it, and verify the behavior together.
 - Give hints and explanations, and provide complete examples when requested. Honor explicit requests to implement changes.
+- The user finds some Go syntax difficult and explicitly asked for a line-by-line explanation and TypeScript comparison. Use familiar TS concepts to explain Go receivers/pointers, returned errors versus exceptions, and test assertions when useful. Check understanding before introducing more new syntax.
 - `PLAN.md` contains the architecture and feature roadmap. This file records exercises, progress, and the next step.
 - Detailed entries below are chronological; older pending items are superseded by **Resume here** and the latest checkpoint.
 
@@ -71,6 +73,13 @@ Restart commands are in **Commands for resuming** below. Start PostgreSQL first 
 - Implemented the bounded/validated Go workout-creation endpoint with transactional counter allocation, workout insertion, a JSON snapshot event, commit/error handling, and HTTP 201. The user confirmed persistence, intentional late failure with unchanged stored state, and recovery. The agent reviewed the code and checked formatting/compilation; no independent runtime/database tests were run.
 - Added a controlled React workout-name input. The user confirmed state updates using console.log; the reviewed component passes formatting/lint and the web production build.
 - Completed the React creation form with POST, success/error status, pending controls, input clearing, and list reload. Code review, component formatting/lint, and production build pass. The user confirmed browser success, database-outage errors with the entered name preserved, and recovery/retry.
+- Extracted health into a named function and workout handlers into methods on an application struct holding the existing database pool. The user practiced pointer types, address-taking, struct literals, receivers, and passing method values; code review and Go checks pass.
+- Added a Go health-response test and table-driven creation-rejection tests for blank names, missing start time, malformed JSON, unknown fields, and extra JSON values. The agent ran these tests successfully; no database is needed for these cases.
+- Implemented GET `/api/workouts/{id}` with UUID parsing, owner-filtered single-row lookup, HTTP 400/404/500 handling, and full-workout JSON. Source/Go checks pass; success, missing/invalid IDs, outage, and recovery are user-confirmed.
+- Connected React workout buttons to the detail endpoint with typed nullable state, visible status/errors, sequential pending controls, clearing of prior selection, and finally reset. Component/build checks pass; browser success, failure, throttled loading/disabled controls, and retry/recovery are user-confirmed.
+- Added the conditional selected-workout section with a name heading and readable Started date/time; committed in `3ddd385`. Source/component/build checks pass, while a separate report of this exact date display remains absent. Resolved the old formatting findings in user commit `278011e`; full `vp check` passes.
+- Selected the first set-logging scope: exercise name, repetitions, and kilograms. Defined and reviewed `CreateWorkoutSetRequest` plus its pointer-receiver validator: trim/require name, require positive reps, reject negative/nonfinite weight, permit zero, and return errors or nil.
+- Added a direct validator test and converted it into three named cases: valid/name normalization, zero weight, and zero reps. The success/error assertions are correct, Go formatting is clean, and all cases plus the existing suite pass. Further invalid/nonfinite cases and set persistence/endpoints/UI are future work.
 
 Runtime success above was reported by the user. At the initial checkpoint, code was inspected without builds or automated tests. Checks from the resumed session are recorded below.
 
@@ -950,9 +959,118 @@ Frontend detail-fetch milestone and commit checkpoint (2026-10-28):
 - Marked the frontend detail-fetch milestone complete and suggested `Load selected workout from API` as a simple commit message. No next exercise has been assigned, and no staging/commit was performed by the agent.
 - Updated only this log. No application/test code, services, database state, or Git history was changed by the agent.
 
+Session stopping checkpoint (2026-10-28):
+
+- The user explicitly asked to stop and make continuation arrangements. Saved the precise resume boundary: all assigned exercises are complete, with no new exercise accepted or started. A selected-workout name/start-time section is a suggested next small step only.
+- Inspected Git status/history, roadmap, checkpoint, Compose service, web scripts/configuration, and restart commands. Confirmed the user's latest commit `93c795f` (`Load selected workout from API`); the working tree was clean before this log update. All application changes and the prior learning log are committed.
+- Updated the resume summary, completed milestones, concepts, restart notes, and current Git/check status. The only new uncommitted change is this file. No application/test code was edited, no commit was made, and no services or containers were started/stopped by the agent.
+- No builds/tests were repeated for unchanged code. Latest successful component/build and Go results are retained above with their coverage limits. Runtime results remain user-reported. The three preexisting web formatting findings and absence of web tests are known follow-ups, not reasons to repeat completed exercises.
+- Preserve the learning approach on return: small exercises, explain unfamiliar syntax, review the user's attempt, and provide complete examples when requested. Begin with the resume summary and Git status rather than older pending entries in the chronology.
+
+Session resumption and selected-workout display exercise (2026-10-29):
+
+- The user asked to continue. Read AGENTS.md, the saved checkpoint, PLAN.md, the current component, web scripts/configuration, Git status/history, and nested-instruction file list. The completed detail-fetch code is intact; only the stopping notes were modified. Latest application commit remains `93c795f`.
+- Ran `vp install` after sourcing the Vite+ environment: passed with dependencies already up to date. No app/test code was edited, and no builds/tests or browser/API/database checks were run.
+- Assigned the previously suggested small UI continuation: replace the selected-name paragraph with a conditional section containing the workout name and readable Started date/time, retaining the selection prompt when null. Use `new Date(selectedWorkout.started_at).toLocaleString()` inside the selected branch and keep detailStatus outside the list above it. Explain nullable-state narrowing and API-string-to-local-display conversion.
+- The user's implementation and browser result are pending. Review/check the attempt before assigning more changes. Updated only this log, with no service or Git-history changes.
+
+Selected-workout section review (2026-10-29):
+
+- Clarified that only the old selected-name paragraph should be replaced, keeping the separate detailStatus paragraph. On "done", inspected the diff/JSX and Git status.
+- The user correctly added the nullable-state ternary, selected section, name heading, formatted start date/time, and fallback prompt. Fetch/pending behavior is unchanged. One content omission remains: add `Started:` before the formatted date so its meaning is visible. Left that correction to the user.
+- Ran `vp check src/App.tsx`: formatting/lint passed with no warnings/errors. Ran `vp run build`: TypeScript and production bundling passed. Ran full `vp check`: failed only the three preexisting formatting findings. Ran `vp test`: exit 1 with no web test files, so no behavioral cases ran.
+- Assigned the label correction and browser confirmation of the selected name/readable start time plus the unselected prompt. These results are pending. No application/test code was edited by the agent and no browser/API/database checks were run. Updated only this log.
+
+Started-label fix and full-check clarification (2026-10-29):
+
+- The user reported the label fixed and asked which full check reports formatting issues. Inspected the JSX and confirmed the correct Started label. No source correction remains for the selected-workout section; browser confirmation has not yet been reported.
+- Reran `vp check` from apps/web to provide current output. It exits 1 and flags only package.json, src/main.tsx, and vite.config.ts for formatting. Explain the difference between plain `vp check` and the component-only `vp check src/App.tsx`, and that `vp check --fix` offers formatting cleanup. No cleanup was performed by the agent.
+- Did not repeat the successful component/build checks after the text-only label addition or the no-web-tests result. Updated only this log; no application/test code or live services were changed by the agent.
+
+Formatting resolution and workout-set request exercise (2026-10-29):
+
+- The user asked to continue. Inspected the component, web configuration, checkpoint, roadmap, Git state/history, Go types, and existing migrations. Confirmed the user's formatting commit `278011e`; full `vp check` now passes (seven formatted files, three linted files, no warnings/errors). The prior three findings are resolved.
+- The selected-workout name/date section and Started label remain correct in source; no specific browser confirmation has been separately reported. Do not reassign its implementation or treat formatting as still broken.
+- Asked which set data the first logger should support. The user explicitly selected `Strength sets: exercise, reps, and weight in kg`. Recorded this accepted requirement in PLAN.md. A workout contains multiple sets; the initial set payload contains exercise name, repetition count, and kg weight.
+- Assigned only a Go request-type exercise: define `CreateWorkoutSetRequest` beside the current request type with `ExerciseName string`, `Reps int`, and `WeightKg float64`, using snake_case JSON tags. Explain decimal weights and whole repetition counts; use the existing request as a pattern. The user's implementation and Go checks are pending.
+- No schema, handler, validation, or UI changes for sets have been assigned yet. No builds/tests or live API/database/browser checks were run beyond the full web check. Updated PLAN.md and this log only; no application/test code, services, or Git history was changed by the agent.
+
+Selected-workout UI commit checkpoint (2026-10-29):
+
+- The user asked whether App.tsx is finished for now and requested a simple commit message. Inspected Git status and staged/unstaged diffs: the UI change is the conditional selected-workout name/start-time section; no Go request-type attempt exists yet.
+- Confirmed this is a suitable UI checkpoint before continuing Go. Suggested `Show selected workout details`. No staging or commit was performed by the agent; a user-made commit has not yet been reported or verified.
+- The current Go request-struct exercise remains pending. No source changes, runtime checks, or repeated builds/tests were needed for this suggestion. Updated only this log.
+
+UI commit confirmation and workout-set request review (2026-10-29):
+
+- On "done", inspected Git status/history and the Go type. Confirmed the user's UI commit `3ddd385` (`Show selected workout details`). The request-type exercise was also implemented, with exactly the requested exported fields/types and JSON tags. No corrections were needed.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: health and the five existing rejection subtests executed and passed, without a cached-result marker. This compiles the new request type; no set behavior exists to exercise yet.
+- Marked the request-type exercise complete. No next exercise has been assigned. Pending work remains the new type and documentation; set validation/migration/endpoint/UI are later steps. No source edits, live requests, service operations, staging, or commit were performed by the agent. Updated only this log.
+
+Workout-set validation-method exercise (2026-10-29):
+
+- The user asked to continue. Reinspected the request type, existing tests, checkpoint, module, and Git state. Consulted installed documentation for errors.New, math.IsNaN, and math.IsInf.
+- Assigned a validation method with pointer receiver and error return. It trims and requires ExerciseName, rejects nonpositive reps, and rejects negative/NaN/infinite weight while allowing zero for unweighted sets. Supply the name-check starter and leave the numeric checks to the user. Explain why the receiver is a pointer and how error/nil return values work.
+- Exact error messages for the exercise: `exercise name is required`, `reps must be greater than zero`, and `weight must be finite and zero or greater`. The method has no HTTP/database work, allowing focused tests later. No validation test exercise, migration, endpoint, or set UI has been assigned yet.
+- The implementation is pending. No builds/tests or live requests were repeated for this guidance-only step. Updated only this log; no application/test code, services, or Git history was changed by the agent.
+
+Workout-set validation-method review (2026-10-29):
+
+- Inspected the user's diff/source and Git status after "done". The pointer receiver correctly preserves the trimmed name; blank-name, nonpositive-reps, and negative/NaN/either-infinity checks use the expected errors; success returns nil and permits zero weight. No corrections are needed. The method's placement below existing handlers is valid and does not affect behavior.
+- Ran `gofmt -l services/api/cmd/server/main.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: health plus the five existing creation-rejection subtests executed and passed, without a cached-result marker. There are no direct tests for the new method yet.
+- Marked the implementation complete. Testing the method directly is the next small topic, but no new exercise has been assigned. Start with valid input/name normalization, then cover boundary/rejection cases in separate small steps. No migration/endpoint/set UI work has been assigned.
+- Updated only this log. No application/test code, live requests, service operations, or Git history was changed by the agent.
+
+Validation syntax explanation and TypeScript comparison (2026-10-29):
+
+- The user explicitly asked for all parts of the latest method to be explained and for a TypeScript version, because Go syntax is difficult and TS is familiar. Inspected the exact method and request struct again. The implementation remains correct and unchanged.
+- Provide a complete TS class illustration using this for the receiver, Error|null return values, trim(), the same checks, and Number.isFinite for nonfinite weight. Explain this is an error-returning comparison rather than a throwing implementation, and note TS number has a broader domain than Go int for reps.
+- Walk through each Go statement/declaration, including pointer mutation, method arguments/return type, package versus field selectors, comparisons and block syntax, error creation/early return, nonfinite weight checks, and nil success. A concrete call should demonstrate the padded name being trimmed in the caller's value.
+- Do not assign another coding exercise while answering this comprehension request. Direct validator tests are still unassigned. No application/test code was edited, and no builds/tests or live checks were repeated for this explanation. Updated only this log.
+
+First direct validator-test exercise (2026-10-29):
+
+- The user asked to continue after the detailed method-syntax and TS comparison. Reinspected the validator, existing tests, checkpoint, and Git state; the validator is unchanged and there is no direct test yet.
+- Assigned a new `TestCreateWorkoutSetRequestValidate` function. Use padded Bench press, 8 reps, and 22.5 kg; invoke the method directly and assert nil error plus the trimmed original name. The starter leaves these two assertions for the user. This checks valid decimal input and makes pointer-receiver mutation observable.
+- No HTTP recorder or database is needed. Format main_test.go and run Go tests from the root. The user's implementation/results are pending; zero/invalid/nonfinite cases will be later exercises, not assigned yet.
+- No code was edited and no builds/tests or live checks were repeated for this guidance-only step. Updated only this log; services and Git history were unchanged by the agent.
+
+First direct validator-test review (2026-10-29):
+
+- Inspected the user's test diff/source and Git status after "done". The test correctly constructs the padded-name/8-rep/22.5-kg request, invokes validate, asserts nil error, and checks the trimmed name on the original request. Both failure diagnostics include actual values. No corrections are needed.
+- Ran `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: health, the five existing rejection subtests, and the new direct validator test executed and passed, without a cached-result marker. This directly verifies valid input and pointer-based normalization.
+- Marked this test exercise complete. Boundary/rejection tests are a possible next small continuation, not yet assigned. No source edits or live API/browser/database checks were made by the agent. Updated only this log; services and Git history were unchanged.
+
+Three-case validator-table exercise (2026-10-29):
+
+- The user asked to continue. Reinspected the passing direct test, validator, checkpoint, and Git state. No source changes since the successful review.
+- Assigned a small table-driven expansion of the same test function: preserve valid-input/name trimming, add valid zero weight, and reject zero reps. Case data includes a typed request, expected error string, and expected normalized name. Supply the first row and loop scaffold; the user implements the two other rows and assertions.
+- Explain the two result branches: empty expected error means nil plus the normalized name; nonempty means first assert an error exists, then compare err.Error() with the expected message. Copy the case input locally so normalization is applied to the value under test. Remaining invalid/NaN/infinity cases are later additions and have not yet been assigned.
+- The implementation is pending. No builds/tests or runtime checks were repeated for this guidance-only step, and no application/test code was edited by the agent. Updated only this log; services and Git history are unchanged.
+
+Validator-table success-branch review (2026-10-29):
+
+- The user asked how to write the first assertion and received the success-branch nil-error guard, with the name check left for them. On "done", inspected the test/diff/status. Their nil-error and normalized-name assertions are both correct.
+- The table currently contains only `valid and trimmed`; the expected-error else branch and two assigned boundary rows are still missing. The old test body is commented out. Do not mark the whole three-case exercise complete merely because its current row passes.
+- Ran `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: health, the five existing rejection subtests, and the single validator subtest executed and passed, without a cached-result marker.
+- Continue the same exercise by adding an outer else branch with a non-nil guard and exact err.Error comparison, then the zero-weight and zero-reps data rows. No new feature/case beyond the existing assignment is introduced. Updated only this log; no application/test code or live state was changed by the agent.
+
+Three-case validator-table completion (2026-10-29):
+
+- Inspected the user's updated table/callback/status after "done". The zero-weight success row and zero-reps rejection row are correct, the expected-error else safely guards nil before err.Error(), and both success assertions remain intact. The old commented-out test was removed. No corrections are needed.
+- Ran `gofmt -l services/api/cmd/server/main.go services/api/cmd/server/main_test.go`: no findings. Ran `GOCACHE=/tmp/gym-app-go-build go -C services/api test ./... -v`: health, five creation-rejection subtests, and all three validator subtests executed and passed, without a cached-result marker.
+- Marked this exercise complete. Additional rejection/nonfinite data rows are possible next work, not assigned yet. No application/test code or live API/browser/database state was changed by the agent. Updated only this log; services and Git history were unchanged.
+
+Session stopping checkpoint (2026-10-29):
+
+- The user explicitly asked to stop and make continuation arrangements. Saved the exact boundary: all currently assigned exercises are complete; the next suggested work is additional validator data rows, not a repeat of the request type, method, explanation, or three-case table.
+- Inspected Git status/history, diff summary, request type, validator, three-case test, Compose configuration, roadmap, and restart notes. Last verified commit is `3ddd385`. Four modified files are saved and uncommitted: PLAN.md, docs/learning.md, services/api/cmd/server/main.go, and services/api/cmd/server/main_test.go.
+- Recorded the accepted kg-set requirement, exact covered rules, uncovered cases, and the user's preference for clear Go/TypeScript comparisons. No set migration, endpoint, or UI has been started. Optional commit message: `Add workout set validation and tests`; no staging/commit was performed by the agent.
+- The latest successful Go formatting/test and full web-check results are retained above with their limits. No unchanged builds/tests or live browser/API/database checks were repeated for stopping. Updated only this log; no source code, services, database state, or Git history was changed by the agent.
+
 ## Commands for resuming
 
-Run these from the project root in separate terminals.
+Run these from the project root in separate terminals. In a fresh terminal, set `DATABASE_URL` again before starting Go. Return browser Network throttling to No throttling for ordinary development.
 
 Refresh dependencies at session start, following AGENTS.md:
 
@@ -960,10 +1078,18 @@ Refresh dependencies at session start, following AGENTS.md:
 vp install
 ```
 
+For the next validator-test exercise, run the Go suite directly:
+
+```bash
+go -C services/api test ./... -v
+```
+
+These tests call functions and handlers directly. Use the service commands below when running the full application.
+
 PostgreSQL (start this first):
 
 ```bash
-sudo docker compose up --wait
+sudo docker compose up --wait db
 ```
 
 Go API (the user's Fish shell):
@@ -1008,7 +1134,16 @@ vp run build
 - Deferred cleanup: `defer` registers a call at that point and executes it when the enclosing handler returns; multiple deferred calls run in reverse order. Transactional inserts can succeed and return fields while remaining uncommitted, then be discarded by rollback.
 - Short variable declarations and assignment: `:=` requires at least one new nonblank name in the current block and can reassign other names from that block; `=` updates existing variables. An if initializer has its own scope, so its local `err` may shadow a handler-level `err`.
 - Controlled React forms, preventing default submission navigation, JSON POST bodies, ISO timestamps, separate creation/list statuses, pending guards/disabled controls, and resetting pending state in `finally`.
+- Struct fields and keyed construction (`&application{pool: pool}`), pointer types versus address-taking (`*` and `&`), method receivers, receiver-local names, and bound methods passed to the router without calling them.
+- Go test discovery, `httptest` requests/recorders, response status/headers/JSON checks, `t.Fatalf`, table-driven case slices, `range` with an ignored index, named subtests with `t.Run`, and `%q` for visible string escapes.
+- Route wildcards and `r.PathValue`, UUID parsing with `pgtype.UUID.Scan`, single-row `QueryRow().Scan`, owner/ID query parameters, `errors.Is` with `pgx.ErrNoRows`, and HTTP 400/404/500 versus successful full-record responses.
+- Nullable React state (`Workout | null`), conditional rendering below a list, passing arrow callbacks instead of executing setters while rendering, and using `void` for an async click callback whose handler catches errors.
+- Vite+ built-ins versus package scripts: `vp build` runs the built-in bundler; `vp run build` runs this project's `tsc && vp build`, checking types before bundling. The TypeScript config uses noEmit.
+- React status text versus Network-panel HTTP status/JSON, and browser network throttling to observe pending/disabled controls when local requests finish quickly.
+- Workout-set payload types (`int` reps and `float64` kg), snake_case JSON tags, in-place normalization through a pointer receiver, `errors.New`/`error`/`nil`, and comparison with TS `this` and an `Error | null` return.
+- Floating-point validation with negative comparisons, `math.IsNaN`, and `math.IsInf(value, 0)` for either infinity; zero weight is valid. Negative/nonfinite rejection code is reviewed but its data rows are not tested yet.
+- Mixed success/error validator tables: a typed request per case, a local copy under test, empty wantError for success, expected normalized names, and a nil guard before err.Error(). `t.Fatalf` stops the subtest so subsequent error access is safe.
 
 ## Later milestones
 
-The first persistent workout creation flow is complete, including the transactional change log and server-controlled development owner. Continue with small Go exercises and the next selected roadmap feature. Richer workout logging, Clerk, TanStack Router/Query, dashboards, food logging, Expo/SQLite synchronization, and encrypted S3 backups remain future work in `PLAN.md`.
+Persistent workout creation, the transactional change log, owner-filtered single-workout lookup, React detail fetching, and the readable selected-workout section are implemented. Strength-set logging in kilograms is in progress: its request type, validator, and initial three-case unit test are complete; remaining validation cases, database schema, endpoints, and UI are future steps. No next exercise has been assigned before stopping. Clerk, TanStack Router/Query, dashboards, food logging, Expo/SQLite synchronization, and encrypted S3 backups remain future work in `PLAN.md`.

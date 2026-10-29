@@ -103,3 +103,69 @@ func TestCreateWorkoutRejectsInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateWorkoutSetRequestValidate(t *testing.T) {
+	type testCase struct {
+		name      string
+		request   CreateWorkoutSetRequest
+		wantError string
+		wantName  string
+	}
+
+	tests := []testCase{
+		{
+			name: "valid and trimmed",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "  Bench press  ",
+				Reps:         8,
+				WeightKg:     22.5,
+			},
+			wantError: "",
+			wantName:  "Bench press",
+		},
+		{
+			name: "zero weight",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Push up",
+				Reps:         8,
+				WeightKg:     0,
+			},
+			wantError: "",
+			wantName:  "Push up",
+		},
+		{
+			name: "zero reps",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Bench press",
+				Reps:         0,
+				WeightKg:     22.5,
+			},
+			wantError: "reps must be greater than zero",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			request := tc.request
+			err := request.validate()
+
+			if tc.wantError == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got: %v", err)
+				}
+				if tc.wantName != request.ExerciseName {
+					t.Fatalf("expected %q, got %q", tc.wantName, request.ExerciseName)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil", tc.wantError)
+				}
+
+				if err.Error() != tc.wantError {
+					t.Fatalf("expected error %q, got %q", tc.wantError, err.Error())
+				}
+			}
+		})
+	}
+
+}

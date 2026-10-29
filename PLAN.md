@@ -29,6 +29,7 @@ Expo retains its [Metro build pipeline](https://docs.expo.dev/guides/customizing
 ## Application behavior and data flow
 
 - **Initial features:** Workout logging, manual calories/macros, reusable meals, food search, barcode scanning, and progress dashboards.
+- **Workout sets (first version):** Record an exercise name, repetitions, and weight in kilograms for each set belonging to a workout.
 - **Web storage:** React calls the Go JSON API. PostgreSQL stores permanent fitness records; the browser holds temporary interface state.
 - **Mobile storage:** Save immediately into SQLite. Existing local records remain usable when the home server or authentication services are unreachable.
 - **Analytics:** Go queries PostgreSQL for web dashboards. Mobile calculates equivalent summaries from local SQLite. Share TypeScript models, validation, and pure calculations where applicable.
