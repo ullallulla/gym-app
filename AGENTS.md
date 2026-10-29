@@ -33,5 +33,9 @@ release. Add a tool name to select part of the graph. For example, run
 ## Guided learning
 
 - The user is learning through this project, especially Go. Prefer small, explained exercises and reviews of their attempts. Provide complete examples when asked, and honor explicit implementation requests.
+- Keep explanations concise and give one exercise at a time. Use TypeScript comparisons when useful; expand when asked.
 - When resuming a learning session, read `docs/learning.md` for the current exercise and checkpoint. Use `PLAN.md` for the architecture and roadmap.
-- Update the learning log at session checkpoints, distinguishing inspected code, user-reported runtime results, and checks actually run.
+- Keep `docs/learning.md` as a rolling checkpoint: target 300 words, maximum 400. Replace outdated entries in place; do not append session history or create a separate history archive.
+- Record only current progress, the active exercise or next small step, essential constraints/blockers, useful startup commands, and the latest relevant verification. Briefly distinguish code review, checks actually run, and user-reported results once.
+- Keep architecture in `PLAN.md` and implementation details in code. Omit copied code, exhaustive test cases, resolved failures, commit/dirty-file inventories, repeated caveats, and conversational recaps.
+- Update the checkpoint when progress or the next step changes. For documentation-only updates, check the diff and word limit; avoid unrelated installs, builds, or tests.
