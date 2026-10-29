@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,6 +142,60 @@ func TestCreateWorkoutSetRequestValidate(t *testing.T) {
 				WeightKg:     22.5,
 			},
 			wantError: "reps must be greater than zero",
+		},
+		{
+			name: "blank exercise name",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "   ",
+				Reps:         8,
+				WeightKg:     22.5,
+			},
+			wantError: "exercise name is required",
+		},
+		{
+			name: "negative reps",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Push up",
+				Reps:         -1,
+				WeightKg:     22.5,
+			},
+			wantError: "reps must be greater than zero",
+		},
+		{
+			name: "negative weight",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Bench press",
+				Reps:         8,
+				WeightKg:     -0.5,
+			},
+			wantError: "weight must be finite and zero or greater",
+		},
+		{
+			name: "NaN weight",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Bench press",
+				Reps:         8,
+				WeightKg:     math.NaN(),
+			},
+			wantError: "weight must be finite and zero or greater",
+		},
+		{
+			name: "positive infinity weight",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Bench press",
+				Reps:         8,
+				WeightKg:     math.Inf(1),
+			},
+			wantError: "weight must be finite and zero or greater",
+		},
+		{
+			name: "negative infinity weight",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Bench press",
+				Reps:         8,
+				WeightKg:     math.Inf(-1),
+			},
+			wantError: "weight must be finite and zero or greater",
 		},
 	}
 
