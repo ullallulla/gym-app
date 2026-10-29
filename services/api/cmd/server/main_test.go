@@ -112,7 +112,7 @@ func TestCreateWorkoutSetRequestValidate(t *testing.T) {
 		wantError string
 		wantName  string
 	}
-
+	maxReps := math.MaxInt32
 	tests := []testCase{
 		{
 			name: "valid and trimmed",
@@ -162,6 +162,16 @@ func TestCreateWorkoutSetRequestValidate(t *testing.T) {
 			wantError: "reps must be greater than zero",
 		},
 		{
+			name: "maximum reps",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Bench press",
+				Reps:         maxReps,
+				WeightKg:     22.5,
+			},
+			wantName:  "Bench press",
+			wantError: "",
+		},
+		{
 			name: "negative weight",
 			request: CreateWorkoutSetRequest{
 				ExerciseName: "Bench press",
@@ -198,6 +208,17 @@ func TestCreateWorkoutSetRequestValidate(t *testing.T) {
 			wantError: "weight must be finite and zero or greater",
 		},
 	}
+	if math.MaxInt > math.MaxInt32 {
+		tests = append(tests, testCase{
+			name: "reps above database maximum",
+			request: CreateWorkoutSetRequest{
+				ExerciseName: "Bench press",
+				Reps:         maxReps + 1,
+				WeightKg:     22.5,
+			},
+			wantError: "reps must be 2147483647 or less",
+		})
+	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -223,4 +244,84 @@ func TestCreateWorkoutSetRequestValidate(t *testing.T) {
 		})
 	}
 
+}
+
+func TestCreateWorkoutSetRejectsInvalidInput(t *testing.T) {
+	type testCase struct {
+		name     string
+		id       string
+		body     string
+		wantBody string
+	}
+
+	tests := []testCase{
+		{
+			name:     "invalid workout ID",
+			id:       "not-a-uuid",
+			body:     `{"exercise_name":"Bench press","reps":8,"weight_kg":22.5}`,
+			wantBody: "Invalid workout ID\n",
+		},
+		{
+			name:     "zero reps",
+			id:       "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"Bench press","reps":0,"weight_kg":22.5}`,
+			wantBody: "reps must be greater than zero\n",
+		},
+		{
+			name:     "malformed JSON",
+			id:       "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":`,
+			wantBody: "Invalid request body\n",
+		},
+		{
+			name:     "unknown field",
+			id:       "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"Bench press","reps":8,"weight_kg":22.5, "extra":true}`,
+			wantBody: "Invalid request body\n",
+		},
+		{
+			name:     "extra JSON value",
+			id:       "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"Bench press","reps":8,"weight_kg":22.5} {}`,
+			wantBody: "Request body must contain a single JSON value\n",
+		},
+		{
+			name:     "oversized body",
+			id:       "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"` + strings.Repeat("x", 1024*1024) + `","reps":8,"weight_kg":22.5}`,
+			wantBody: "Invalid request body\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &application{}
+
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/api/workouts/"+tc.id+"/sets",
+				strings.NewReader(tc.body),
+			)
+			request.SetPathValue("id", tc.id)
+			recorder := httptest.NewRecorder()
+
+			app.createWorkoutSet(recorder, request)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf(
+					"status = %d, want %d",
+					recorder.Code,
+					http.StatusBadRequest,
+				)
+			}
+
+			if recorder.Body.String() != tc.wantBody {
+				t.Fatalf(
+					"body = %q, want %q",
+					recorder.Body.String(),
+					tc.wantBody,
+				)
+			}
+		})
+	}
 }
