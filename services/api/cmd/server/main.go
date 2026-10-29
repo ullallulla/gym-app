@@ -26,6 +26,17 @@ type Workout struct {
 	Revision  int64     `json:"revision"`
 }
 
+type WorkoutSet struct {
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	WorkoutID    string    `json:"workout_id"`
+	ExerciseName string    `json:"exercise_name"`
+	Reps         int       `json:"reps"`
+	WeightKg     float64   `json:"weight_kg"`
+	CreatedAt    time.Time `json:"created_at"`
+	Revision     int64     `json:"revision"`
+}
+
 type CreateWorkoutRequest struct {
 	Name      string    `json:"name"`
 	StartedAt time.Time `json:"started_at"`
@@ -275,11 +286,48 @@ func (request *CreateWorkoutSetRequest) validate() error {
 		return errors.New("reps must be greater than zero")
 	}
 
+	if request.Reps > math.MaxInt32 {
+		return errors.New("reps must be 2147483647 or less")
+	}
+
 	if request.WeightKg < 0 || math.IsNaN(request.WeightKg) || math.IsInf(request.WeightKg, 0) {
 		return errors.New("weight must be finite and zero or greater")
 	}
 
 	return nil
+}
+
+func (app *application) createWorkoutSet(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var workoutID pgtype.UUID
+
+	if err := workoutID.Scan(id); err != nil {
+		http.Error(w, "Invalid workout ID", http.StatusBadRequest)
+		return
+	}
+
+	var request CreateWorkoutSetRequest
+	var extra any
+
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024*1024))
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := decoder.Decode(&extra); err != io.EOF {
+		http.Error(w, "Request body must contain a single JSON value", http.StatusBadRequest)
+		return
+	}
+
+	if err := request.validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	http.Error(w, "Workout set creation is not implemented yet", http.StatusNotImplemented)
 }
 
 func main() {
@@ -316,6 +364,8 @@ func main() {
 	mux.HandleFunc("GET /api/workouts/{id}", app.getWorkout)
 
 	mux.HandleFunc("POST /api/workouts", app.createWorkout)
+
+	mux.HandleFunc("POST /api/workouts/{id}/sets", app.createWorkoutSet)
 
 	log.Println("API listening on http://localhost:8080")
 	err = http.ListenAndServe("127.0.0.1:8080", mux)
