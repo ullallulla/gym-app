@@ -161,6 +161,87 @@ func (app *application) getWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (app *application) listWorkoutSets(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var workoutID pgtype.UUID
+
+	if err := workoutID.Scan(id); err != nil {
+		http.Error(w, "Invalid workout ID", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	userID := "local-dev"
+	var workoutExists bool
+
+	query := `SELECT EXISTS (
+	SELECT 1
+	FROM workouts
+	WHERE user_id = $1 AND id = $2
+	)`
+
+	err := app.pool.QueryRow(ctx, query, userID, workoutID).Scan(&workoutExists)
+
+	if err != nil {
+		log.Printf("check workout for set listing: %v", err)
+		http.Error(w, "Could not load workout", http.StatusInternalServerError)
+		return
+	}
+
+	if !workoutExists {
+		http.Error(w, "Workout not found", http.StatusNotFound)
+		return
+	}
+
+	setQuery := `SELECT id::text, user_id, workout_id::text, exercise_name, reps, weight_kg, created_at, revision
+	FROM workout_sets
+	WHERE user_id = $1 AND workout_id = $2
+	ORDER BY created_at, id
+	`
+	rows, err := app.pool.Query(ctx, setQuery, userID, workoutID)
+
+	if err != nil {
+		log.Printf("query workout sets: %v", err)
+		http.Error(w, "Could not load workout sets", http.StatusInternalServerError)
+		return
+	}
+
+	defer rows.Close()
+
+	workoutSets := make([]WorkoutSet, 0)
+
+	for rows.Next() {
+		var workoutSet WorkoutSet
+		if err := rows.Scan(
+			&workoutSet.ID,
+			&workoutSet.UserID,
+			&workoutSet.WorkoutID,
+			&workoutSet.ExerciseName,
+			&workoutSet.Reps,
+			&workoutSet.WeightKg,
+			&workoutSet.CreatedAt,
+			&workoutSet.Revision,
+		); err != nil {
+			log.Printf("scan workout set: %v", err)
+			http.Error(w, "Could not load workout sets", http.StatusInternalServerError)
+			return
+		}
+		workoutSets = append(workoutSets, workoutSet)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("read workout sets: %v", err)
+		http.Error(w, "Could not load workout sets", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(workoutSets); err != nil {
+		log.Printf("failed to write workout sets response: %v", err)
+	}
+}
+
 func (app *application) createWorkout(w http.ResponseWriter, r *http.Request) {
 	var request CreateWorkoutRequest
 	var extra any
@@ -473,6 +554,8 @@ func main() {
 	mux.HandleFunc("GET /api/workouts", app.listWorkouts)
 
 	mux.HandleFunc("GET /api/workouts/{id}", app.getWorkout)
+
+	mux.HandleFunc("GET /api/workouts/{id}/sets", app.listWorkoutSets)
 
 	mux.HandleFunc("POST /api/workouts", app.createWorkout)
 
