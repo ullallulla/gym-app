@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { fetchWorkoutSets, type WorkoutSet } from "./workoutSets";
 
 type Workout = {
   id: string;
@@ -19,6 +20,7 @@ function App() {
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [detailStatus, setDetailStatus] = useState("");
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [workoutSets, setWorkoutSets] = useState<WorkoutSet[]>([]);
 
   async function checkApi() {
     const url = "/api/health";
@@ -46,6 +48,7 @@ function App() {
     setDetailStatus("Loading...");
     setIsLoadingDetail(true);
     setSelectedWorkout(null);
+    setWorkoutSets([]);
 
     try {
       const response = await fetch(url);
@@ -53,8 +56,10 @@ function App() {
         throw new Error(`Response.status: ${response.status}`);
       }
       const result: Workout = await response.json();
+      const sets = await fetchWorkoutSets(id);
       setSelectedWorkout(result);
       setDetailStatus("Loaded");
+      setWorkoutSets(sets);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setDetailStatus(`Error: ${message}`);
@@ -135,6 +140,18 @@ function App() {
         <section>
           <h2>{selectedWorkout.name}</h2>
           <p>Started: {new Date(selectedWorkout.started_at).toLocaleString()}</p>
+          <p>Sets: {workoutSets.length}</p>
+          {workoutSets.length > 0 ? (
+            <ul>
+              {workoutSets.map((workoutSet) => (
+                <li key={workoutSet.id}>
+                  {workoutSet.exercise_name}: {workoutSet.reps} reps * {workoutSet.weight_kg} kg.
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No sets logged yet.</p>
+          )}
         </section>
       ) : (
         <p>Select a workout</p>
