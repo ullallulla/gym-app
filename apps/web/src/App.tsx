@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fetchWorkoutSets, type WorkoutSet } from "./workoutSets";
+import { fetchWorkoutSets, createWorkoutSet, type WorkoutSet } from "./workoutSets";
 
 type Workout = {
   id: string;
@@ -21,6 +21,11 @@ function App() {
   const [detailStatus, setDetailStatus] = useState("");
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [workoutSets, setWorkoutSets] = useState<WorkoutSet[]>([]);
+  const [exerciseName, setExerciseName] = useState("");
+  const [reps, setReps] = useState("");
+  const [weightKg, setWeightKg] = useState("");
+  const [isCreatingSet, setIsCreatingSet] = useState(false);
+  const [createSetStatus, setCreateSetStatus] = useState("");
 
   async function checkApi() {
     const url = "/api/health";
@@ -41,7 +46,7 @@ function App() {
   async function loadWorkout(id: string) {
     const url = `/api/workouts/${id}`;
 
-    if (isLoadingDetail) {
+    if (isLoadingDetail || isCreatingSet) {
       return;
     }
 
@@ -49,6 +54,10 @@ function App() {
     setIsLoadingDetail(true);
     setSelectedWorkout(null);
     setWorkoutSets([]);
+    setExerciseName("");
+    setReps("");
+    setWeightKg("");
+    setCreateSetStatus("");
 
     try {
       const response = await fetch(url);
@@ -113,6 +122,31 @@ function App() {
     }
   }
 
+  async function handleCreateWorkoutSet() {
+    if (!selectedWorkout || isCreatingSet) {
+      return;
+    }
+    setIsCreatingSet(true);
+    setCreateSetStatus("Saving...");
+    try {
+      const createdSet = await createWorkoutSet(selectedWorkout.id, {
+        exercise_name: exerciseName.trim(),
+        reps: Number(reps),
+        weight_kg: Number(weightKg),
+      });
+      setWorkoutSets((currentSets) => [...currentSets, createdSet]);
+      setExerciseName("");
+      setReps("");
+      setWeightKg("");
+      setCreateSetStatus("Set added");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setCreateSetStatus(`Error: ${message}`);
+    } finally {
+      setIsCreatingSet(false);
+    }
+  }
+
   return (
     <>
       <h1>Gym app</h1>
@@ -127,7 +161,7 @@ function App() {
           <li key={workout.id}>
             <button
               type="button"
-              disabled={isLoadingDetail}
+              disabled={isLoadingDetail || isCreatingSet}
               onClick={() => void loadWorkout(workout.id)}
             >
               {workout.name}
@@ -152,6 +186,48 @@ function App() {
           ) : (
             <p>No sets logged yet.</p>
           )}
+          <p>{createSetStatus}</p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateWorkoutSet();
+            }}
+          >
+            <label htmlFor="set-exercise">Exercise</label>
+            <input
+              id="set-exercise"
+              required
+              disabled={isCreatingSet}
+              type="text"
+              value={exerciseName}
+              onChange={(event) => setExerciseName(event.target.value)}
+            />
+            <label htmlFor="set-reps">Reps</label>
+            <input
+              id="set-reps"
+              required
+              disabled={isCreatingSet}
+              type="number"
+              value={reps}
+              min="1"
+              step="1"
+              onChange={(event) => setReps(event.target.value)}
+            />
+            <label htmlFor="set-weight">Weight</label>
+            <input
+              id="set-weight"
+              required
+              disabled={isCreatingSet}
+              type="number"
+              min="0"
+              step="any"
+              value={weightKg}
+              onChange={(event) => setWeightKg(event.target.value)}
+            />
+            <button type="submit" disabled={isCreatingSet}>
+              Add set
+            </button>
+          </form>
         </section>
       ) : (
         <p>Select a workout</p>

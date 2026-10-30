@@ -6,13 +6,11 @@ Updated: 2026-10-30.
 
 - Working: Go health and workout create/list/detail endpoints; React workout creation, list, and detail views.
 - Workout-set migration 3, types, validation, rejection tests, and Go create/list endpoints are complete. Owner-filtered reads and transactional change logging are implemented and reviewed.
-- React set loading, count, list, and empty state work in the browser. TypeScript GET/POST helpers are reviewed; the set-entry UI is next.
+- React set listing, creation, persistence, validation-error recovery, slow-save controls, and server-outage recovery work in the browser. TypeScript helpers and async submit flow are reviewed. The set-creation form is complete.
 
-## Active exercise
+## Next step
 
-In `App.tsx`, add labeled controlled inputs inside the selected workout section for exercise name, reps, and weight in kilograms. Use string states `exerciseName`, `reps`, and `weightKg`, initially empty; input `value` and `onChange` should use those states. Reps: number, min 1, step 1. Weight: number, min 0, step any. Reset these fields when `loadWorkout` starts after its guard. Review the inputs before wiring submission.
-
-Then add form submission, convert numeric strings, call the POST helper, and update displayed sets. Roadmap: `PLAN.md`.
+The set-creation form is ready to commit: `Add workout set creation form`. No active coding exercise. Choose the next small feature using `PLAN.md` after this milestone.
 
 ## Essential constraints
 
@@ -21,8 +19,8 @@ Then add form submission, convert numeric strings, call the POST helper, and upd
 
 ## Latest verification
 
-- Agent review (2026-10-30): POST helper and error propagation are correct. Checks run: `vp install` up to date; `vp check` and `vp run build` pass; `vp test --passWithNoTests` finds no frontend tests. Last Go tests passed without database integration.
-- User evidence: browser list/empty state and switching work. GET returns ordered sets, `[]` for empty, and 404 for missing workouts. POST persistence and rollback/recovery passed (set/event/counter all +1 on success, unchanged on event failure). Migration Down remains untested.
+- Agent review (2026-10-30): submit flow and guards are correct. Saving is cleared in `finally`; an immediate outage error can make the disabled transition too brief to notice. Last checks: `vp install` up to date; `vp check` and `vp run build` pass; frontend test runner found no tests. Last Go tests passed without database integration.
+- User evidence: browser creation/persistence, listing, validation recovery, and slow-save controls pass. User reports outage error handling and retry also work. GET API cases and POST transactional rollback/recovery passed. Migration Down remains untested.
 
 ## Startup
 
