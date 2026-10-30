@@ -48,6 +48,11 @@ type CreateWorkoutSetRequest struct {
 	WeightKg     float64 `json:"weight_kg"`
 }
 
+type UpdateWorkoutSetRequest struct {
+	CreateWorkoutSetRequest
+	ExpectedRevision int64 `json:"expected_revision"`
+}
+
 type application struct {
 	pool *pgxpool.Pool
 }
@@ -373,6 +378,18 @@ func (request *CreateWorkoutSetRequest) validate() error {
 
 	if request.WeightKg < 0 || math.IsNaN(request.WeightKg) || math.IsInf(request.WeightKg, 0) {
 		return errors.New("weight must be finite and zero or greater")
+	}
+
+	return nil
+}
+
+func (request *UpdateWorkoutSetRequest) validate() error {
+	if err := request.CreateWorkoutSetRequest.validate(); err != nil {
+		return err
+	}
+
+	if request.ExpectedRevision <= 0 {
+		return errors.New("expected revision must be greater than zero")
 	}
 
 	return nil
