@@ -410,3 +410,98 @@ func TestCreateWorkoutSetRejectsInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateWorkoutSetRejectsInvalidInput(t *testing.T) {
+	type testCase struct {
+		name     string
+		id       string
+		setID    string
+		body     string
+		wantBody string
+	}
+
+	tests := []testCase{
+		{
+			name:     "extra JSON value",
+			id:       "00000000-0000-0000-0000-000000000001",
+			setID:    "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"Bench press","reps":8,"weight_kg":22.5, "expected_revision":1} {}`,
+			wantBody: "Request body must contain a single JSON value\n",
+		},
+		{
+			name:     "invalid workout ID",
+			id:       "not-a-uuid",
+			setID:    "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"Bench press","reps":8,"weight_kg":22.5, "expected_revision":1}`,
+			wantBody: "Invalid workout ID\n",
+		},
+		{
+			name:     "invalid set ID",
+			id:       "00000000-0000-0000-0000-000000000001",
+			setID:    "not-a-uuid",
+			body:     `{"exercise_name":"Bench press","reps":8,"weight_kg":22.5, "expected_revision":1}`,
+			wantBody: "Invalid workout set ID\n",
+		},
+		{
+			name:     "malformed JSON",
+			id:       "00000000-0000-0000-0000-000000000001",
+			setID:    "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":`,
+			wantBody: "Invalid request body\n",
+		},
+		{
+			name:     "unknown fields",
+			id:       "00000000-0000-0000-0000-000000000001",
+			setID:    "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"Bench press","reps":8,"weight_kg":22.5, "expected_revision":1, "extra": true}`,
+			wantBody: "Invalid request body\n",
+		},
+		{
+			name:     "oversized body",
+			id:       "00000000-0000-0000-0000-000000000001",
+			setID:    "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"` + strings.Repeat("x", 1024*1024) + `","reps":8,"weight_kg":22.5, "expected_revision":1}`,
+			wantBody: "Invalid request body\n",
+		},
+		{
+			name:     "missing expected_revision",
+			id:       "00000000-0000-0000-0000-000000000001",
+			setID:    "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"Bench press","reps":8,"weight_kg":22.5}`,
+			wantBody: "expected revision must be greater than zero\n",
+		},
+		{
+			name:     "zero reps",
+			id:       "00000000-0000-0000-0000-000000000001",
+			setID:    "00000000-0000-0000-0000-000000000001",
+			body:     `{"exercise_name":"Bench press","reps":0,"weight_kg":22.5, "expected_revision":1}`,
+			wantBody: "reps must be greater than zero\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &application{}
+			request := httptest.NewRequest(
+				http.MethodPut,
+				"/api/workouts/"+tc.id+"/sets/"+tc.setID,
+				strings.NewReader(tc.body),
+			)
+			request.SetPathValue("id", tc.id)
+			request.SetPathValue("setID", tc.setID)
+
+			recorder := httptest.NewRecorder()
+
+			app.updateWorkoutSet(recorder, request)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status %v, expected %v", recorder.Code, http.StatusBadRequest)
+			}
+
+			if recorder.Body.String() != tc.wantBody {
+				t.Fatalf("body was %q, expected %q", recorder.Body.String(), tc.wantBody)
+			}
+
+		})
+	}
+}

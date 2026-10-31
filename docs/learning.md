@@ -1,18 +1,17 @@
 # Learning checkpoint
 
-Updated: 2026-10-30.
+Updated: 2026-10-31.
 
 ## Current progress
 
-- Working: Go health and workout create/list/detail endpoints; React workout creation, list, and detail views.
-- Workout-set migration 3, types, validation, rejection tests, and Go create/list endpoints are complete. Owner-filtered reads and transactional change logging are implemented and reviewed.
-- React set listing, creation, persistence, validation-error recovery, slow-save controls, and server-outage recovery work in the browser. Set creation is complete. Go editing request validation and its focused tests are implemented and reviewed; the HTTP handler is next.
+- Working: Go health, workout create/list/detail, and workout-set create/list APIs with transactional change logging. React workout views and set creation/listing/recovery are complete.
+- Go PUT set editing is implemented, reviewed, and manually verified against PostgreSQL. React editing is next.
 
-## Active exercise
+## Active exercise — TypeScript update API client
 
-In `main.go`, add `app.updateWorkoutSet` and register `PUT /api/workouts/{id}/sets/{setID}`. Parse both path values as `pgtype.UUID`. Return 400/return for an invalid workout ID or workout-set ID, with distinct messages. After both IDs validate, return 501 while building the endpoint. Follow `createWorkoutSet`'s UUID validation pattern. Review the user's attempt next.
+In `apps/web/src/workoutSets.ts`, export `UpdateWorkoutSetRequest` combining `CreateWorkoutSetRequest` with numeric `expected_revision`. Add async `updateWorkoutSet(workoutId, setId, request): Promise<WorkoutSet>` following the create helper: PUT to the set URL, JSON Content-Type/body, reject non-OK responses including 409, and return the parsed set. Review the user's implementation before UI wiring.
 
-Then decode/validate the update JSON and implement ownership/revision checks plus transactional change logging. Connect editing to React afterward. Roadmap: `PLAN.md`.
+Then add edit state/form, saving/error handling, conflict recovery, and replace the saved row with the API result. Roadmap: `PLAN.md`.
 
 ## Essential constraints
 
@@ -22,8 +21,8 @@ Then decode/validate the update JSON and implement ownership/revision checks plu
 
 ## Latest verification
 
-- Agent review (2026-10-30): update validation tests correctly assert success/name trimming and each expected error; case names are clear. Checks run: `gofmt -d` and `git diff --check` clean; `go -C services/api test ./... -count=1` passes. Last frontend checks/build passed; no frontend tests or database integration tests exist.
-- User evidence: browser creation/persistence, listing, validation recovery, and slow-save controls pass. User reports outage error handling and retry also work. GET API cases and POST transactional rollback/recovery passed. Migration Down remains untested.
+- Agent review (2026-10-31): completed PUT handler and fixture SQL reviewed. Last code checks: `gofmt -d` and `git diff --check` clean; Go suite passed (`go -C services/api test ./... -count=1`). Tests cover input rejection. Last frontend checks/build passed; no frontend tests exist.
+- User evidence: update persistence, conflict rejection, workout/owner isolation, event consistency, forced event-insert rollback, and recovery pass. Test constraint was removed. Recovery leaves the local set at 1 rep/5 kg/revision 3, counter 20, two update events. Ownership fixture remains at 8 reps/20 kg/revision 1. Earlier POST rollback/recovery passed.
 
 ## Startup
 
