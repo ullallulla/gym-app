@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { fetchWorkoutSets, createWorkoutSet, type WorkoutSet } from "./workoutSets";
+import {
+  fetchWorkoutSets,
+  createWorkoutSet,
+  updateWorkoutSet,
+  type WorkoutSet,
+  ApiError,
+} from "./workoutSets";
 
 type Workout = {
   id: string;
@@ -30,6 +36,8 @@ function App() {
   const [editExerciseName, setEditExerciseName] = useState("");
   const [editReps, setEditReps] = useState("");
   const [editWeightKg, setEditWeightKg] = useState("");
+  const [isUpdatingSet, setIsUpdatingSet] = useState(false);
+  const [updateSetStatus, setUpdateSetStatus] = useState("");
 
   async function checkApi() {
     const url = "/api/health";
@@ -50,7 +58,7 @@ function App() {
   async function loadWorkout(id: string) {
     const url = `/api/workouts/${id}`;
 
-    if (isLoadingDetail || isCreatingSet) {
+    if (isLoadingDetail || isCreatingSet || isUpdatingSet) {
       return;
     }
 
@@ -63,6 +71,7 @@ function App() {
     setWeightKg("");
     setCreateSetStatus("");
     setEditingSet(null);
+    setUpdateSetStatus("");
 
     try {
       const response = await fetch(url);
@@ -152,11 +161,43 @@ function App() {
     }
   }
 
+  async function handleUpdateWorkoutSet() {
+    if (!editingSet || isUpdatingSet || isLoadingDetail) {
+      return;
+    }
+    setIsUpdatingSet(true);
+    setUpdateSetStatus("Editing...");
+
+    try {
+      const updatedSet = await updateWorkoutSet(editingSet.workout_id, editingSet.id, {
+        exercise_name: editExerciseName.trim(),
+        reps: Number(editReps),
+        weight_kg: Number(editWeightKg),
+        expected_revision: editingSet.revision,
+      });
+      setWorkoutSets((currentSets) =>
+        currentSets.map((set) => (set.id === updatedSet.id ? updatedSet : set)),
+      );
+      setUpdateSetStatus("Set updated");
+      setEditingSet(null);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setUpdateSetStatus("This set has changed. Your edits have been kept.");
+      } else {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        setUpdateSetStatus(`Error: ${message}`);
+      }
+    } finally {
+      setIsUpdatingSet(false);
+    }
+  }
+
   function handleEditButton(workoutSet: WorkoutSet) {
     setEditingSet(workoutSet);
     setEditExerciseName(workoutSet.exercise_name);
     setEditReps(String(workoutSet.reps));
     setEditWeightKg(String(workoutSet.weight_kg));
+    setUpdateSetStatus("");
   }
 
   return (
@@ -173,7 +214,7 @@ function App() {
           <li key={workout.id}>
             <button
               type="button"
-              disabled={isLoadingDetail || isCreatingSet}
+              disabled={isLoadingDetail || isCreatingSet || isUpdatingSet}
               onClick={() => void loadWorkout(workout.id)}
             >
               {workout.name}
@@ -191,7 +232,11 @@ function App() {
             <ul>
               {workoutSets.map((workoutSet) => (
                 <li key={workoutSet.id}>
-                  <button type="button" onClick={() => handleEditButton(workoutSet)}>
+                  <button
+                    type="button"
+                    disabled={isUpdatingSet}
+                    onClick={() => handleEditButton(workoutSet)}
+                  >
                     Edit
                   </button>
                   {workoutSet.exercise_name}: {workoutSet.reps} reps * {workoutSet.weight_kg} kg.
@@ -201,10 +246,12 @@ function App() {
           ) : (
             <p>No sets logged yet.</p>
           )}
+          <p>{updateSetStatus}</p>
           {editingSet && (
             <form
               onSubmit={(event) => {
                 event.preventDefault();
+                handleUpdateWorkoutSet();
               }}
             >
               <p>
@@ -213,6 +260,7 @@ function App() {
                   id="edit-exercise"
                   type="text"
                   required
+                  disabled={isUpdatingSet}
                   value={editExerciseName}
                   onChange={(event) => setEditExerciseName(event.target.value)}
                 />{" "}
@@ -221,6 +269,7 @@ function App() {
                   id="edit-reps"
                   type="number"
                   required
+                  disabled={isUpdatingSet}
                   min="1"
                   step="1"
                   value={editReps}
@@ -231,6 +280,7 @@ function App() {
                   id="edit-weight"
                   type="number"
                   required
+                  disabled={isUpdatingSet}
                   min="0"
                   step="any"
                   value={editWeightKg}
@@ -238,10 +288,12 @@ function App() {
                 />{" "}
                 kg
               </p>
-              <button type="button" onClick={() => setEditingSet(null)}>
+              <button type="button" disabled={isUpdatingSet} onClick={() => setEditingSet(null)}>
                 Cancel
               </button>
-              <button type="submit">Save</button>
+              <button type="submit" disabled={isUpdatingSet}>
+                Save
+              </button>
             </form>
           )}
           <p>{createSetStatus}</p>

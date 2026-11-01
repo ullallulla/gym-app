@@ -19,6 +19,14 @@ export type UpdateWorkoutSetRequest = CreateWorkoutSetRequest & {
   expected_revision: number;
 };
 
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number) {
+    super(`Response status: ${status}`);
+    this.status = status;
+  }
+}
+
 export async function fetchWorkoutSets(workoutId: string): Promise<WorkoutSet[]> {
   const url = `/api/workouts/${workoutId}/sets`;
 
@@ -62,7 +70,7 @@ export async function updateWorkoutSet(
     body: JSON.stringify(request),
   });
   if (!response.ok) {
-    throw new Error(`Response status: ${response.status}`);
+    throw new ApiError(response.status);
   }
 
   const workoutSet: WorkoutSet = await response.json();

@@ -4,14 +4,14 @@ Updated: 2026-11-01.
 
 ## Current progress
 
-- Go workout/set APIs, React creation/listing, the PUT helper, and the edit form exist. `App.tsx` does not import or call `updateWorkoutSet`; edit submission only prevents default.
-- Exercise library/renaming, blocks, ordering, completion, prefilling, and deletion safeguards are planned in `PLAN.md`, not implemented. Custom renames will update current and past workout labels. Current schema has migrations 1–3. Counter/revision details remain under review in `docs/proposed-changes.md`.
+- Go workout/set APIs and React creation/listing/edit saving passed code review, including guards, disabled controls, status resets, `ApiError`, and HTTP 409 messaging. Drafts survive failed saves. Browser verification remains.
+- Milestone 2 remains planned in `PLAN.md`. Schema has migrations 1–3. Counter/revision details remain under review in `docs/proposed-changes.md`.
 
-## Active exercise — Save an edited set
+## Active exercise — Recover from revision conflicts
 
-In `apps/web/src/App.tsx`, import `updateWorkoutSet` and implement async `handleUpdateWorkoutSet`, following the create handler. Submit the editing set's workout/record IDs, trimmed name, numeric reps/weight, and `expected_revision`. Replace the saved row and close editing on success; preserve drafts and show errors on failure. Add saving/status state, `try/catch/finally`, duplicate-save/loading guards, and disable conflicting controls while saving. Wire edit-form submission to the handler. Give hints; full solutions only when asked.
+Next small step: track conflicts explicitly in `App.tsx` to control recovery UI. Set conflict state on HTTP 409; clear on new edit, workout load, successful save, or cancel. Keep drafts and the editing revision unchanged. Give hints; full solutions only when asked.
 
-Next: explicit revision-conflict recovery preserving drafts, then verify persistence, failed saves, and stale edits before milestone 2.
+Then add a user-triggered reload of the latest record, preserving drafts for review before a manual resave. Avoid `loadWorkout` for this reload: it clears editing/drafts. No automatic retry or silent revision replacement. Guard actions during recovery. Verify persistence, failed saves, and stale edits before milestone 2.
 
 ## Essential constraints
 
@@ -22,8 +22,7 @@ Next: explicit revision-conflict recovery preserving drafts, then verify persist
 
 ## Latest verification
 
-- Code inspection (2026-11-01): confirmed missing edit-save wiring and current schema. This documentation update: diff/word count checked; no runtime checks rerun.
-- Prior recorded checks: `vp check` and TypeScript/build passed; `vp test` found no tests. Go suite last passed 2026-10-31.
+- Code review (2026-11-01): conflict message/fallback approved; drafts and revision preserved. Actual checks: `vp check`, TypeScript/build, and diff checks passed; `vp test` found no tests. Earlier `vp install` passed. No browser verification. Go suite last passed 2026-10-31.
 - User-reported WSL results: migrations through version 3 and empty workout listing verified.
 
 ## Startup
