@@ -26,6 +26,10 @@ function App() {
   const [weightKg, setWeightKg] = useState("");
   const [isCreatingSet, setIsCreatingSet] = useState(false);
   const [createSetStatus, setCreateSetStatus] = useState("");
+  const [editingSet, setEditingSet] = useState<WorkoutSet | null>(null);
+  const [editExerciseName, setEditExerciseName] = useState("");
+  const [editReps, setEditReps] = useState("");
+  const [editWeightKg, setEditWeightKg] = useState("");
 
   async function checkApi() {
     const url = "/api/health";
@@ -58,6 +62,7 @@ function App() {
     setReps("");
     setWeightKg("");
     setCreateSetStatus("");
+    setEditingSet(null);
 
     try {
       const response = await fetch(url);
@@ -147,6 +152,13 @@ function App() {
     }
   }
 
+  function handleEditButton(workoutSet: WorkoutSet) {
+    setEditingSet(workoutSet);
+    setEditExerciseName(workoutSet.exercise_name);
+    setEditReps(String(workoutSet.reps));
+    setEditWeightKg(String(workoutSet.weight_kg));
+  }
+
   return (
     <>
       <h1>Gym app</h1>
@@ -179,12 +191,58 @@ function App() {
             <ul>
               {workoutSets.map((workoutSet) => (
                 <li key={workoutSet.id}>
+                  <button type="button" onClick={() => handleEditButton(workoutSet)}>
+                    Edit
+                  </button>
                   {workoutSet.exercise_name}: {workoutSet.reps} reps * {workoutSet.weight_kg} kg.
                 </li>
               ))}
             </ul>
           ) : (
             <p>No sets logged yet.</p>
+          )}
+          {editingSet && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+              }}
+            >
+              <p>
+                Editing: <label htmlFor="edit-exercise">Exercise</label>
+                <input
+                  id="edit-exercise"
+                  type="text"
+                  required
+                  value={editExerciseName}
+                  onChange={(event) => setEditExerciseName(event.target.value)}
+                />{" "}
+                — <label htmlFor="edit-reps">Reps</label>
+                <input
+                  id="edit-reps"
+                  type="number"
+                  required
+                  min="1"
+                  step="1"
+                  value={editReps}
+                  onChange={(event) => setEditReps(event.target.value)}
+                />{" "}
+                reps ×<label htmlFor="edit-weight">Weight</label>
+                <input
+                  id="edit-weight"
+                  type="number"
+                  required
+                  min="0"
+                  step="any"
+                  value={editWeightKg}
+                  onChange={(event) => setEditWeightKg(event.target.value)}
+                />{" "}
+                kg
+              </p>
+              <button type="button" onClick={() => setEditingSet(null)}>
+                Cancel
+              </button>
+              <button type="submit">Save</button>
+            </form>
           )}
           <p>{createSetStatus}</p>
           <form

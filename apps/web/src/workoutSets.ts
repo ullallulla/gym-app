@@ -15,6 +15,10 @@ export type CreateWorkoutSetRequest = {
   weight_kg: number;
 };
 
+export type UpdateWorkoutSetRequest = CreateWorkoutSetRequest & {
+  expected_revision: number;
+};
+
 export async function fetchWorkoutSets(workoutId: string): Promise<WorkoutSet[]> {
   const url = `/api/workouts/${workoutId}/sets`;
 
@@ -35,6 +39,26 @@ export async function createWorkoutSet(
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error(`Response status: ${response.status}`);
+  }
+
+  const workoutSet: WorkoutSet = await response.json();
+
+  return workoutSet;
+}
+
+export async function updateWorkoutSet(
+  workoutId: string,
+  setId: string,
+  request: UpdateWorkoutSetRequest,
+): Promise<WorkoutSet> {
+  const url = `/api/workouts/${workoutId}/sets/${setId}`;
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
   if (!response.ok) {
