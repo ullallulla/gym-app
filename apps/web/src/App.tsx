@@ -38,6 +38,7 @@ function App() {
   const [editWeightKg, setEditWeightKg] = useState("");
   const [isUpdatingSet, setIsUpdatingSet] = useState(false);
   const [updateSetStatus, setUpdateSetStatus] = useState("");
+  const [hasSetConflict, setHasSetConflict] = useState(false);
 
   async function checkApi() {
     const url = "/api/health";
@@ -72,6 +73,7 @@ function App() {
     setCreateSetStatus("");
     setEditingSet(null);
     setUpdateSetStatus("");
+    setHasSetConflict(false);
 
     try {
       const response = await fetch(url);
@@ -162,7 +164,7 @@ function App() {
   }
 
   async function handleUpdateWorkoutSet() {
-    if (!editingSet || isUpdatingSet || isLoadingDetail) {
+    if (!editingSet || isUpdatingSet || isLoadingDetail || hasSetConflict) {
       return;
     }
     setIsUpdatingSet(true);
@@ -180,9 +182,11 @@ function App() {
       );
       setUpdateSetStatus("Set updated");
       setEditingSet(null);
+      setHasSetConflict(false);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         setUpdateSetStatus("This set has changed. Your edits have been kept.");
+        setHasSetConflict(true);
       } else {
         const message = error instanceof Error ? error.message : "Unknown error";
         setUpdateSetStatus(`Error: ${message}`);
@@ -198,6 +202,7 @@ function App() {
     setEditReps(String(workoutSet.reps));
     setEditWeightKg(String(workoutSet.weight_kg));
     setUpdateSetStatus("");
+    setHasSetConflict(false);
   }
 
   return (
@@ -288,10 +293,17 @@ function App() {
                 />{" "}
                 kg
               </p>
-              <button type="button" disabled={isUpdatingSet} onClick={() => setEditingSet(null)}>
+              <button
+                type="button"
+                disabled={isUpdatingSet}
+                onClick={() => {
+                  setEditingSet(null);
+                  setHasSetConflict(false);
+                }}
+              >
                 Cancel
               </button>
-              <button type="submit" disabled={isUpdatingSet}>
+              <button type="submit" disabled={isUpdatingSet || hasSetConflict}>
                 Save
               </button>
             </form>

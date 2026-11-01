@@ -4,14 +4,14 @@ Updated: 2026-11-01.
 
 ## Current progress
 
-- Go workout/set APIs and React creation/listing/edit saving passed code review, including guards, disabled controls, status resets, `ApiError`, and HTTP 409 messaging. Drafts survive failed saves. Browser verification remains.
+- Go workout/set APIs and React creation/listing/edit saving passed code review, including guards, disabled controls, status resets, `ApiError`, HTTP 409 messaging, and conflict state. Drafts survive failed saves. Browser verification remains.
 - Milestone 2 remains planned in `PLAN.md`. Schema has migrations 1–3. Counter/revision details remain under review in `docs/proposed-changes.md`.
 
 ## Active exercise — Recover from revision conflicts
 
-Next small step: track conflicts explicitly in `App.tsx` to control recovery UI. Set conflict state on HTTP 409; clear on new edit, workout load, successful save, or cancel. Keep drafts and the editing revision unchanged. Give hints; full solutions only when asked.
+Next small step: teach a conflict-reload handler in `App.tsx`, using `fetchWorkoutSets` and the editing set's ID to find the latest record. On an explicit reload, update that row and the editing snapshot/revision while preserving all draft inputs; clear the conflict and prompt review before manual saving. On fetch failure or a missing record, preserve drafts/conflict and show an error. Use loading state, guards, and `try/catch/finally`. Give hints; full solutions only when asked.
 
-Then add a user-triggered reload of the latest record, preserving drafts for review before a manual resave. Avoid `loadWorkout` for this reload: it clears editing/drafts. No automatic retry or silent revision replacement. Guard actions during recovery. Verify persistence, failed saves, and stale edits before milestone 2.
+Then connect a Reload latest button shown during conflicts and disable conflicting controls during recovery. Avoid `loadWorkout`: it clears editing/drafts. No automatic retry or silent revision replacement. Verify persistence, failed saves, and stale edits before milestone 2.
 
 ## Essential constraints
 
@@ -22,7 +22,7 @@ Then add a user-triggered reload of the latest record, preserving drafts for rev
 
 ## Latest verification
 
-- Code review (2026-11-01): conflict message/fallback approved; drafts and revision preserved. Actual checks: `vp check`, TypeScript/build, and diff checks passed; `vp test` found no tests. Earlier `vp install` passed. No browser verification. Go suite last passed 2026-10-31.
+- Code review (2026-11-01): conflict guard, successful-save reset, and Cancel fixes approved. Actual checks: `vp check`, TypeScript/build, and diff checks passed; `vp test` found no tests. Earlier `vp install` passed. No browser verification. Go suite last passed 2026-10-31.
 - User-reported WSL results: migrations through version 3 and empty workout listing verified.
 
 ## Startup
