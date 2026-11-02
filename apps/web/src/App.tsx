@@ -39,6 +39,7 @@ function App() {
   const [isUpdatingSet, setIsUpdatingSet] = useState(false);
   const [updateSetStatus, setUpdateSetStatus] = useState("");
   const [hasSetConflict, setHasSetConflict] = useState(false);
+  const [isReloadingSet, setIsReloadingSet] = useState(false);
 
   async function checkApi() {
     const url = "/api/health";
@@ -59,7 +60,7 @@ function App() {
   async function loadWorkout(id: string) {
     const url = `/api/workouts/${id}`;
 
-    if (isLoadingDetail || isCreatingSet || isUpdatingSet) {
+    if (isLoadingDetail || isCreatingSet || isUpdatingSet || isReloadingSet) {
       return;
     }
 
@@ -139,7 +140,7 @@ function App() {
   }
 
   async function handleCreateWorkoutSet() {
-    if (!selectedWorkout || isCreatingSet) {
+    if (!selectedWorkout || isCreatingSet || isReloadingSet) {
       return;
     }
     setIsCreatingSet(true);
@@ -164,7 +165,7 @@ function App() {
   }
 
   async function handleUpdateWorkoutSet() {
-    if (!editingSet || isUpdatingSet || isLoadingDetail || hasSetConflict) {
+    if (!editingSet || isUpdatingSet || isLoadingDetail || hasSetConflict || isReloadingSet) {
       return;
     }
     setIsUpdatingSet(true);
@@ -196,7 +197,44 @@ function App() {
     }
   }
 
+  async function handleReloadWorkoutSet() {
+    if (
+      !editingSet ||
+      !hasSetConflict ||
+      isReloadingSet ||
+      isUpdatingSet ||
+      isCreatingSet ||
+      isLoadingDetail
+    ) {
+      return;
+    }
+    setIsReloadingSet(true);
+    setUpdateSetStatus("Reloading latest set...");
+    try {
+      const sets = await fetchWorkoutSets(editingSet.workout_id);
+      const latestSet = sets.find((set) => set.id === editingSet.id);
+
+      if (!latestSet) {
+        throw new Error("This set no longer exists.");
+      }
+      setWorkoutSets((currentSets) =>
+        currentSets.map((set) => (set.id === latestSet.id ? latestSet : set)),
+      );
+      setEditingSet(latestSet);
+      setHasSetConflict(false);
+      setUpdateSetStatus("Latest set loaded. Review your edits before saving");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setUpdateSetStatus(`Error: ${message}`);
+    } finally {
+      setIsReloadingSet(false);
+    }
+  }
+
   function handleEditButton(workoutSet: WorkoutSet) {
+    if (isUpdatingSet || isReloadingSet) {
+      return;
+    }
     setEditingSet(workoutSet);
     setEditExerciseName(workoutSet.exercise_name);
     setEditReps(String(workoutSet.reps));
@@ -219,7 +257,7 @@ function App() {
           <li key={workout.id}>
             <button
               type="button"
-              disabled={isLoadingDetail || isCreatingSet || isUpdatingSet}
+              disabled={isLoadingDetail || isCreatingSet || isUpdatingSet || isReloadingSet}
               onClick={() => void loadWorkout(workout.id)}
             >
               {workout.name}
@@ -239,7 +277,7 @@ function App() {
                 <li key={workoutSet.id}>
                   <button
                     type="button"
-                    disabled={isUpdatingSet}
+                    disabled={isUpdatingSet || isReloadingSet}
                     onClick={() => handleEditButton(workoutSet)}
                   >
                     Edit
@@ -295,17 +333,29 @@ function App() {
               </p>
               <button
                 type="button"
-                disabled={isUpdatingSet}
+                disabled={isUpdatingSet || isReloadingSet}
                 onClick={() => {
+                  if (isUpdatingSet || isReloadingSet) {
+                    return;
+                  }
                   setEditingSet(null);
                   setHasSetConflict(false);
                 }}
               >
                 Cancel
               </button>
-              <button type="submit" disabled={isUpdatingSet || hasSetConflict}>
+              <button type="submit" disabled={isUpdatingSet || hasSetConflict || isReloadingSet}>
                 Save
               </button>
+              {hasSetConflict && (
+                <button
+                  type="button"
+                  disabled={isReloadingSet || isUpdatingSet || isCreatingSet || isLoadingDetail}
+                  onClick={() => void handleReloadWorkoutSet()}
+                >
+                  Reload latest
+                </button>
+              )}
             </form>
           )}
           <p>{createSetStatus}</p>
@@ -319,7 +369,7 @@ function App() {
             <input
               id="set-exercise"
               required
-              disabled={isCreatingSet}
+              disabled={isCreatingSet || isReloadingSet}
               type="text"
               value={exerciseName}
               onChange={(event) => setExerciseName(event.target.value)}
@@ -328,7 +378,7 @@ function App() {
             <input
               id="set-reps"
               required
-              disabled={isCreatingSet}
+              disabled={isCreatingSet || isReloadingSet}
               type="number"
               value={reps}
               min="1"
@@ -339,14 +389,14 @@ function App() {
             <input
               id="set-weight"
               required
-              disabled={isCreatingSet}
+              disabled={isCreatingSet || isReloadingSet}
               type="number"
               min="0"
               step="any"
               value={weightKg}
               onChange={(event) => setWeightKg(event.target.value)}
             />
-            <button type="submit" disabled={isCreatingSet}>
+            <button type="submit" disabled={isCreatingSet || isReloadingSet}>
               Add set
             </button>
           </form>

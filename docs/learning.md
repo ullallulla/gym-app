@@ -1,29 +1,29 @@
 # Learning checkpoint
 
-Updated: 2026-11-01.
+Updated: 2026-11-02.
 
 ## Current progress
 
-- Go workout/set APIs and React creation/listing/edit saving passed code review, including guards, disabled controls, status resets, `ApiError`, HTTP 409 messaging, and conflict state. Drafts survive failed saves. Browser verification remains.
-- Milestone 2 remains planned in `PLAN.md`. Schema has migrations 1–3. Counter/revision details remain under review in `docs/proposed-changes.md`.
+- Milestone 1 editing/conflict recovery is complete, with code review and user-reported browser verification.
+- Milestone 2 starts with client-generated UUIDs and create retries, as specified in `PLAN.md`. Schema has migrations 1–3.
 
-## Active exercise — Recover from revision conflicts
+## Active exercise — Understand create retries
 
-Next small step: teach a conflict-reload handler in `App.tsx`, using `fetchWorkoutSets` and the editing set's ID to find the latest record. On an explicit reload, update that row and the editing snapshot/revision while preserving all draft inputs; clear the conflict and prompt review before manual saving. On fetch failure or a missing record, preserve drafts/conflict and show an error. Use loading state, guards, and `try/catch/finally`. Give hints; full solutions only when asked.
+Next small step: trace `createWorkout` in `services/api/cmd/server/main.go`. Consider a successful transaction whose HTTP response never reaches the client, followed by the same POST again. Explain what the current INSERT and database UUID default do to workout rows and change-log events, and which identity must remain stable across attempts.
 
-Then connect a Reload latest button shown during conflicts and disable conflicting controls during recovery. Avoid `loadWorkout`: it clears editing/drafts. No automatic retry or silent revision replacement. Verify persistence, failed saves, and stale edits before milestone 2.
+Then define same-ID retry/payload-mismatch behavior and ownership responses before changing SQL. Start implementation with workouts. Give one exercise at a time; full examples when asked. No milestone 2 code changes yet.
 
 ## Essential constraints
 
 - Ownership is server-selected (`local-dev` until authentication).
 - Allocate the per-user counter before entity lookup/writes; counter, entity, and event share one transaction. Pattern: `createWorkout`.
 - Check expected revisions; increment stored revisions. Stale edits must not overwrite newer data.
-- Keep the current weight representation during this exercise.
+- Keep the current weight representation until an explicit precision/representation decision.
 
 ## Latest verification
 
-- Code review (2026-11-01): conflict guard, successful-save reset, and Cancel fixes approved. Actual checks: `vp check`, TypeScript/build, and diff checks passed; `vp test` found no tests. Earlier `vp install` passed. No browser verification. Go suite last passed 2026-10-31.
-- User-reported WSL results: migrations through version 3 and empty workout listing verified.
+- Code review (2026-11-02): conflict recovery/guards complete. Actual checks: `vp install`, web `vp check`, TypeScript/build, and environment doctor passed. Root `vp check` reports formatting in unchanged `PLAN.md`/`package.json`; `vp test` found no tests (exit 1). Diff checks passed. Go suite last passed 2026-10-31.
+- User-reported browser results (2026-11-02): persistence, failed saves/retries, two-tab conflicts, and failed reloads/retries all work as intended, including preserved drafts and manual saving. Earlier WSL results: migrations through version 3 and empty workout listing verified.
 
 ## Startup
 
