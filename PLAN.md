@@ -41,6 +41,66 @@ Expo retains its [Metro build pipeline](https://docs.expo.dev/guides/customizing
 - **Server recovery:** Schedule PostgreSQL backups, keep a copy away from the database host, and verify restoration into a separate database before relying on the app for daily records.
 - **Cloud backups:** Encrypt archives on the client using AES-GCM and a separate recovery key before uploading through temporary S3 URLs. Keep recovery keys off the server.
 
+## Current database structure
+
+The diagram reflects migrations 1–3 in `services/api/migrations`. All columns are
+required. `PK` means primary key; `FK` means foreign key. Exercise library and
+exercise block tables belong to milestone 2 and are not yet implemented.
+
+```mermaid
+erDiagram
+    workouts ||--o{ workout_sets : "contains (same owner)"
+    user_change_counters ||--o{ change_log : "tracks changes"
+
+    workouts {
+        uuid id PK
+        text user_id
+        text name
+        timestamptz started_at
+        timestamptz created_at
+        bigint revision
+    }
+
+    workout_sets {
+        uuid id PK
+        text user_id FK
+        uuid workout_id FK
+        text exercise_name
+        integer reps
+        float8 weight_kg
+        timestamptz created_at
+        bigint revision
+    }
+
+    user_change_counters {
+        text user_id PK
+        bigint last_sequence
+    }
+
+    change_log {
+        text user_id PK,FK
+        bigint sequence PK
+        text entity_type
+        uuid entity_id
+        text operation
+        bigint revision
+        jsonb payload
+        timestamptz created_at
+    }
+```
+
+- One workout can contain zero or more sets; each set belongs to exactly one
+  workout. The composite foreign key `(user_id, workout_id)` references
+  `workouts(user_id, id)`, which has a composite unique constraint. This prevents
+  a set from belonging to another user's workout.
+- Each change-log entry belongs to one user counter. Its composite primary key is
+  `(user_id, sequence)`, so different users can have the same sequence number.
+- `change_log.entity_type` and `entity_id` identify the changed record in
+  application code; they are not database foreign keys. There is no users table
+  yet, and `workouts.user_id` has no foreign key to the counters table.
+- `float8` is PostgreSQL's alias for `DOUBLE PRECISION`. Set lookup/order uses the
+  index `(user_id, workout_id, created_at, id)`.
+
 ## Workout logging model
 
 - **Exercise library:** Provide a chooser containing shared, read-only preset exercises and the user's private custom exercises. Users can create an exercise and reuse it in future workouts. Both kinds have stable exercise IDs; the API permits selection only of presets or custom exercises belonging to the current user. Introduce exercise identity and selection with blocks in milestone 2.
@@ -57,6 +117,77 @@ Expo retains its [Metro build pipeline](https://docs.expo.dev/guides/customizing
 Reorder blocks in one transaction using the complete, duplicate-free block-ID list and the workout's expected revision. Reject stale revisions or a list that does not exactly match the workout's current blocks. Adding, deleting, or reordering blocks must invalidate stale order revisions. Record the complete resulting order and affected revisions in one change-log event so future offline clients can reproduce the change. Specify the detailed workout/block revision changes and event payload before implementation.
 
 The server assigns set positions when appending; create requests carry no position. Decide whether deleted positions may be reused before implementation: `max(position) + 1` reuses the last position after its set is deleted, while strict non-reuse requires a persistent counter. Surviving sets keep their stored positions in either case.
+
+## Workout create retry contract
+
+For valid create requests using the same user and client-supplied workout ID:
+
+- **Same original create payload:** Return HTTP 200 with the current workout and
+  its current revision, including any later edits. Keep its data, timestamps, and
+  revision unchanged; create no additional workout or change-log event.
+- **Different original create payload:** Return HTTP 409 Conflict with the generic
+  error `Workout ID conflicts with this request`. Leave the existing workout
+  unchanged and create no change-log event. Changing an existing workout requires
+  a separate update request.
+
+If the supplied ID belongs to another user, return the same HTTP 409 status and
+generic error as a same-user payload mismatch. Return no workout or ownership
+details, and change no workout data, revisions, or change-log events.
+
+When `id` is omitted or null, keep the database-generated UUID fallback. Each
+successful request creates a new workout and its create event; an identical retry
+can therefore create a duplicate. Clients needing safe create retries must
+generate an ID once and retain it across attempts. Do not deduplicate by workout
+name or start time, since separate intentional workouts can share those values.
+
+Retry recognition after later edits must compare the request's `name` and
+`started_at` with immutable original creation values for that user and workout ID.
+Keep those original values available separately from the workout's current
+editable values. A later rename must neither turn an original create retry into a
+payload conflict nor be undone by that retry.
+
+Compare names using exact string equality after the existing `strings.TrimSpace`
+normalization. Surrounding whitespace does not cause a payload conflict; case and
+internal whitespace remain significant.
+
+Compare start times as instants with `time.Time.Equal`, so equivalent UTC offsets
+match. Normalize incoming and retained original start times to UTC with fractional
+seconds truncated to microsecond precision before storing or comparing them. This
+matches the current pgx encoding and PostgreSQL's
+[microsecond timestamp resolution](https://www.postgresql.org/docs/current/datatype-datetime.html).
+Differences smaller than a microsecond within the same truncated value do not
+cause a payload conflict.
+
+Plan to retain original creation values in internal `original_name` and
+`original_started_at` columns on the workout row. New creates write the normalized
+original values in the same transaction as the workout and its event; later edits
+leave them unchanged. This keeps retry recognition independent of future
+change-log pruning.
+
+For existing workouts, populate these columns from a trustworthy original workout
+create event for the same owner and workout ID. The event payload contains the
+initial `name` and `started_at`; the current row may contain later edits and must
+not be used to guess the original values.
+
+Verify that the event metadata and payload identify the same owner and workout,
+and describe initial revision 1. Require exactly one workout create event for that
+owner and workout ID; multiple create events leave the original values unverified.
+
+Backfill candidates require a nonempty JSON-string name and a JSON-string start
+time containing a fixed date/time with `Z` or an explicit numeric UTC offset and
+at most six fractional-second digits, matching the stored creation payloads.
+Validate timestamp parsing before casting. Exclude relative/special inputs such
+as `now` or `infinity`, and timestamps whose offset would have to be guessed.
+
+If original creation values cannot be recovered reliably, leave both original
+columns null. Never infer them from the current workout values. A valid create
+request reusing that workout ID returns the same generic HTTP 409 conflict without
+changing data, revisions, or events, since a matching original payload cannot be
+verified. Ordinary reads and edits of the existing workout remain available.
+
+Use nullable `TEXT` and `TIMESTAMPTZ` columns for the original name and start time,
+with a constraint requiring both values to be present or both null. New API
+creates must always supply both original values.
 
 ## Delivery milestones
 

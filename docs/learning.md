@@ -5,13 +5,13 @@ Updated: 2026-11-02.
 ## Current progress
 
 - Milestone 1 editing/conflict recovery is complete, with code review and user-reported browser verification.
-- Milestone 2 starts with client-generated UUIDs and create retries, as specified in `PLAN.md`. Schema has migrations 1–3.
+- Milestone 2 starts with client-generated UUIDs and create retries, as specified in `PLAN.md`. User's Goose output confirms schema version 4.
 
-## Active exercise — Understand create retries
+## Active exercise — Store original values on creation
 
-Next small step: trace `createWorkout` in `services/api/cmd/server/main.go`. Consider a successful transaction whose HTTP response never reaches the client, followed by the same POST again. Explain what the current INSERT and database UUID default do to workout rows and change-log events, and which identity must remain stable across attempts.
+Optional ID validation in `services/api/cmd/server/main.go` and both rejection tests pass review. Empty/malformed IDs return HTTP 400 before database work; omitted/null IDs skip validation. SQL still generates fresh UUIDs, so lost-response retries can duplicate workouts/events.
 
-Then define same-ID retry/payload-mismatch behavior and ownership responses before changing SQL. Start implementation with workouts. Give one exercise at a time; full examples when asked. No milestone 2 code changes yet.
+Retry and storage rules are in `PLAN.md`. Migration 4 is applied. Next exercise: extend `createWorkout`'s INSERT with `original_name` and `original_started_at`, using the existing normalized name/time values. Reuse placeholders `$2` and `$3`; the existing three Go arguments and public RETURNING/Scan fields already suffice. Review this change before adding client-ID insertion and retry handling. Give one small exercise at a time; examples when asked.
 
 ## Essential constraints
 
@@ -22,8 +22,8 @@ Then define same-ID retry/payload-mismatch behavior and ownership responses befo
 
 ## Latest verification
 
-- Code review (2026-11-02): conflict recovery/guards complete. Actual checks: `vp install`, web `vp check`, TypeScript/build, and environment doctor passed. Root `vp check` reports formatting in unchanged `PLAN.md`/`package.json`; `vp test` found no tests (exit 1). Diff checks passed. Go suite last passed 2026-10-31.
-- User-reported browser results (2026-11-02): persistence, failed saves/retries, two-tab conflicts, and failed reloads/retries all work as intended, including preserved drafts and manual saving. Earlier WSL results: migrations through version 3 and empty workout listing verified.
+- Actual checks (2026-11-02): PostgreSQL 18.6 passed 36 fixtures plus Up/Down, paired-null rejection, repeat-backfill, and record/log/counter preservation checks in a rolled-back schema. Diff checks passed. Last Go tests and formatting checks passed earlier.
+- User-reported results: Goose screenshot confirms migration 4 applied. Milestone 1 browser persistence, failed-save/reload recovery, and two-tab conflicts passed with preserved drafts/manual saving; WSL listing verified.
 
 ## Startup
 
