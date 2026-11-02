@@ -134,11 +134,19 @@ If the supplied ID belongs to another user, return the same HTTP 409 status and
 generic error as a same-user payload mismatch. Return no workout or ownership
 details, and change no workout data, revisions, or change-log events.
 
+Allocate the per-user change sequence before entity lookups/writes as usual. A
+retry or conflict must roll back that provisional allocation; only a new creation
+commits the counter, workout, and create event together.
+
 When `id` is omitted or null, keep the database-generated UUID fallback. Each
 successful request creates a new workout and its create event; an identical retry
 can therefore create a duplicate. Clients needing safe create retries must
 generate an ID once and retain it across attempts. Do not deduplicate by workout
 name or start time, since separate intentional workouts can share those values.
+
+Clients retain the complete pending create body (`id`, `name`, and `started_at`)
+across retries. Build it once for the initial submission, resend it after an
+uncertain failure, and clear it after a successfully decoded HTTP 200/201 response.
 
 Retry recognition after later edits must compare the request's `name` and
 `started_at` with immutable original creation values for that user and workout ID.

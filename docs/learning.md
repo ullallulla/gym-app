@@ -5,13 +5,13 @@ Updated: 2026-11-02.
 ## Current progress
 
 - Milestone 1 editing/conflict recovery is complete, with code review and user-reported browser verification.
-- Milestone 2 starts with client-generated UUIDs and create retries, as specified in `PLAN.md`. User's Goose output confirms schema version 4.
+- Milestone 2 workout-create retries are verified on the server. Schema version 4 is applied; the web caller still needs stable IDs and payload retention.
 
-## Active exercise — Store original values on creation
+## Active exercise — Type the web create request
 
-Optional ID validation in `services/api/cmd/server/main.go` and both rejection tests pass review. Empty/malformed IDs return HTTP 400 before database work; omitted/null IDs skip validation. SQL still generates fresh UUIDs, so lost-response retries can duplicate workouts/events.
+The actual server handler passed isolated API/database checks, including JSON responses, ownership, unknown originals, normalization, later edits, concurrency, and counter/event preservation. The web `createWorkout` in `apps/web/src/App.tsx` still sends no ID and generates a timestamp on each attempt.
 
-Retry and storage rules are in `PLAN.md`. Migration 4 is applied. Next exercise: extend `createWorkout`'s INSERT with `original_name` and `original_started_at`, using the existing normalized name/time values. Reuse placeholders `$2` and `$3`; the existing three Go arguments and public RETURNING/Scan fields already suffice. Review this change before adding client-ID insertion and retry handling. Give one small exercise at a time; examples when asked.
+Retry rules are in `PLAN.md`. Next exercise: define a TypeScript create-request type with optional `id`, plus `name` and `started_at`; extract the inline POST body into a typed `request` object before `fetch` and send `JSON.stringify(request)`. Then add ID generation and retain the full pending body across retries. Account for development over a plain HTTP WSL IP when choosing UUID generation. Give one small exercise at a time; examples when asked.
 
 ## Essential constraints
 
@@ -19,10 +19,11 @@ Retry and storage rules are in `PLAN.md`. Migration 4 is applied. Next exercise:
 - Allocate the per-user counter before entity lookup/writes; counter, entity, and event share one transaction. Pattern: `createWorkout`.
 - Check expected revisions; increment stored revisions. Stale edits must not overwrite newer data.
 - Keep the current weight representation until an explicit precision/representation decision.
+- Keep incremental reviews brief with existing Go checks; reserve broader database checks for the completed retry flow.
 
 ## Latest verification
 
-- Actual checks (2026-11-02): PostgreSQL 18.6 passed 36 fixtures plus Up/Down, paired-null rejection, repeat-backfill, and record/log/counter preservation checks in a rolled-back schema. Diff checks passed. Last Go tests and formatting checks passed earlier.
+- Actual checks (2026-11-02): 19 requests through the actual handler and PostgreSQL passed, including simultaneous identical creates and complete data/counter/event comparisons for retries/conflicts. The temporary schema was removed. Existing Go tests, formatting, and diff checks passed; migration 4 previously passed its isolated Up/Down verification.
 - User-reported results: Goose screenshot confirms migration 4 applied. Milestone 1 browser persistence, failed-save/reload recovery, and two-tab conflicts passed with preserved drafts/manual saving; WSL listing verified.
 
 ## Startup
@@ -39,3 +40,5 @@ go -C services/api run ./cmd/server
 Web: `apps/web`, `vp run dev`; build: `vp run build`. Root has no build script.
 
 WSL: `vp run dev --host <WSL-IP> --port 5173 --strictPort`; IP: `hostname -I`. Windows direct IP works; localhost forwarding fails. Stop existing server first.
+
+Restart the Go API after Go source changes before browser verification.

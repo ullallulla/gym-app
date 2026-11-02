@@ -315,18 +315,59 @@ func (app *application) createWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var workout Workout
-	workoutQuery := `INSERT INTO workouts (user_id, name, started_at)
-	VALUES ($1, $2, $3)
+	workoutQuery := `INSERT INTO workouts (user_id, name, started_at, original_name, original_started_at, id)
+	VALUES ($1, $2, $3, $2, $3, COALESCE($4::UUID, gen_random_uuid()))
+	ON CONFLICT (id) DO NOTHING
 	RETURNING id::text, user_id, name, started_at, created_at, revision`
 
-	if err := tx.QueryRow(ctx, workoutQuery, userID, request.Name, request.StartedAt).Scan(
+	err = tx.QueryRow(ctx, workoutQuery, userID, request.Name, request.StartedAt, workoutID).Scan(
 		&workout.ID,
 		&workout.UserID,
 		&workout.Name,
 		&workout.StartedAt,
 		&workout.CreatedAt,
 		&workout.Revision,
-	); err != nil {
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		var originalName pgtype.Text
+		var originalStartedAt pgtype.Timestamptz
+
+		lookupQuery := `SELECT
+		    id::text, user_id, name, started_at, created_at, revision,
+		    original_name, original_started_at
+			FROM workouts
+			WHERE user_id = $1 AND id = $2`
+		lookupErr := tx.QueryRow(ctx, lookupQuery, userID, workoutID).Scan(
+			&workout.ID,
+			&workout.UserID,
+			&workout.Name,
+			&workout.StartedAt,
+			&workout.CreatedAt,
+			&workout.Revision,
+			&originalName,
+			&originalStartedAt,
+		)
+		if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
+			http.Error(w, "Could not load workout", http.StatusInternalServerError)
+			return
+		}
+
+		if lookupErr == nil && originalName.Valid &&
+			originalStartedAt.Valid && originalName.String == request.Name &&
+			originalStartedAt.Time.Equal(request.StartedAt) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			if err := json.NewEncoder(w).Encode(workout); err != nil {
+				log.Printf("write workout retry response: %v", err)
+			}
+			return
+		}
+		http.Error(w, "Workout ID conflicts with this request", http.StatusConflict)
+		return
+	}
+
+	if err != nil {
 		log.Printf("allocate workout: %v", err)
 		http.Error(w, "Could not create a workout", http.StatusInternalServerError)
 		return
