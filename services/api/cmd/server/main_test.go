@@ -71,6 +71,16 @@ func TestCreateWorkoutRejectsInvalidInput(t *testing.T) {
 			body:     `{"name":"Push day","started_at":"2026-10-28T12:00:00Z"} {}`,
 			wantBody: "Request body must contain a single JSON value\n",
 		},
+		{
+			name:     "blank ID",
+			body:     `{"name":"Push day","started_at":"2026-10-28T12:00:00Z", "id":""}`,
+			wantBody: "Invalid workout ID\n",
+		},
+		{
+			name:     "invalid ID",
+			body:     `{"name":"Push day","started_at":"2026-10-28T12:00:00Z", "id":"not-a-uuid"}`,
+			wantBody: "Invalid workout ID\n",
+		},
 	}
 
 	for _, tc := range tests {

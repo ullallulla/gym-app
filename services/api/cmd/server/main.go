@@ -40,6 +40,7 @@ type WorkoutSet struct {
 type CreateWorkoutRequest struct {
 	Name      string    `json:"name"`
 	StartedAt time.Time `json:"started_at"`
+	ID        *string   `json:"id"`
 }
 
 type CreateWorkoutSetRequest struct {
@@ -250,6 +251,7 @@ func (app *application) listWorkoutSets(w http.ResponseWriter, r *http.Request) 
 func (app *application) createWorkout(w http.ResponseWriter, r *http.Request) {
 	var request CreateWorkoutRequest
 	var extra any
+	var workoutID pgtype.UUID
 
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024*1024))
 	decoder.DisallowUnknownFields()
@@ -265,6 +267,7 @@ func (app *application) createWorkout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	request.Name = strings.TrimSpace(request.Name)
+	request.StartedAt = normalizeWorkoutStart(request.StartedAt)
 
 	if request.Name == "" {
 		http.Error(w, "Workout name is required", http.StatusBadRequest)
@@ -274,6 +277,13 @@ func (app *application) createWorkout(w http.ResponseWriter, r *http.Request) {
 	if request.StartedAt.IsZero() {
 		http.Error(w, "Workout start time is required", http.StatusBadRequest)
 		return
+	}
+
+	if request.ID != nil {
+		if err := workoutID.Scan(*request.ID); err != nil {
+			http.Error(w, "Invalid workout ID", http.StatusBadRequest)
+			return
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -698,6 +708,10 @@ func (app *application) updateWorkoutSet(w http.ResponseWriter, r *http.Request)
 		log.Printf("write workout set response: %v", err)
 	}
 
+}
+
+func normalizeWorkoutStart(t time.Time) time.Time {
+	return t.UTC().Truncate(time.Microsecond)
 }
 
 func main() {
