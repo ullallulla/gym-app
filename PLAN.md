@@ -43,9 +43,10 @@ Expo retains its [Metro build pipeline](https://docs.expo.dev/guides/customizing
 
 ## Current database structure
 
-The diagram reflects migrations 1–3 in `services/api/migrations`. All columns are
-required. `PK` means primary key; `FK` means foreign key. Exercise library and
-exercise block tables belong to milestone 2 and are not yet implemented.
+The diagram reflects migrations 1–4 in `services/api/migrations`. All columns are
+required except `workouts.original_name` and `original_started_at`, which must be
+both null or both present. `PK` means primary key; `FK` means foreign key. Exercise
+library and exercise block tables belong to milestone 2 and are not yet implemented.
 
 ```mermaid
 erDiagram
@@ -59,6 +60,8 @@ erDiagram
         timestamptz started_at
         timestamptz created_at
         bigint revision
+        text original_name
+        timestamptz original_started_at
     }
 
     workout_sets {
@@ -166,7 +169,7 @@ matches the current pgx encoding and PostgreSQL's
 Differences smaller than a microsecond within the same truncated value do not
 cause a payload conflict.
 
-Plan to retain original creation values in internal `original_name` and
+Retain original creation values in internal `original_name` and
 `original_started_at` columns on the workout row. New creates write the normalized
 original values in the same transaction as the workout and its event; later edits
 leave them unchanged. This keeps retry recognition independent of future
